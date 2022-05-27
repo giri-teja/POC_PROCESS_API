@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd">
+	<flow name="eodReportFlow" doc:id="9b07f58b-840b-4d74-a064-ac3697c031b9" >
+		<ee:transform doc:name="Transform Message" doc:id="09af86b9-0002-406f-aa52-3015dae16f92" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	cid: attributes.headers.customermasternumber default "",
+	ip: attributes.headers.'IP',
+	flowName: "EodReport"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<vm:publish doc:name="Publish to EODReportProcessingQueue" doc:id="f183f99e-7ce1-431a-a050-88a0e599420a" config-ref="OrderProcessingQueue_Config" queueName="${eodreport.queue}"/>
+	</flow>
+</mule>

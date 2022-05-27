@@ -1,0 +1,409 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="ddDriveOrderRouteFlow" doc:id="996d5017-57d9-4d2c-b64f-823a3ae2f289" >
+		<ee:transform doc:name="Request Transform" doc:id="8430da1e-80b3-4dda-9d7b-63b6c876219c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	cid: attributes.headers.customermasternumber default "",
+	ip: attributes.headers.'IP'
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="6c1c31e5-474a-4680-a58f-c94c0fd2f471" >
+			<when expression="#[not isEmpty(attributes.headers.customermasternumber)]">
+				<logger level="INFO" doc:name="Log Registered User" doc:id="513beaa0-60ca-4f9e-9571-c73e2f06c66d" message="#[vars.correlation_id] ::Old Customer!! " category="com.caseys.orderrouter"/>
+				<vm:publish queueName="${ddDrive.order.sfscupdate.queue}" doc:name="Publish DD Drive OrderProcessingSFSCUpdateQueue" doc:id="a565eb8b-187a-4352-8544-6aec904617b5" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}"/>
+			</when>
+			<when expression="#[isEmpty(attributes.headers.customermasternumber) and (isEmpty(payload.orderPayload.contactInfo.emailId) and isEmpty(payload.orderPayload.contactInfo.phoneNumber))]">
+				<logger level="INFO" doc:name="Log Guest User" doc:id="f3143293-f0ea-4fe6-bf72-65e8da177ada" message="#[vars.correlation_id] :: Guest Customer!! Without emailId and Phonenumber" category="com.caseys.orderrouter"/>
+				<vm:publish queueName="${ddDrive.order.queue}" doc:name="Publish DD Drive OrderProcessingQueue" doc:id="8cccddff-69d4-4e54-b01d-bc2f887221d2" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Log New Customer" doc:id="3dde8c9a-fed5-45a1-afe0-67922ab6977f" message="#[vars.correlation_id]::New Customer" category="com.caseys.orderrouter"/>
+				<vm:publish doc:name="Publish DD Drive OrderProcessingSFSCCreateQueue" doc:id="e6b49bc5-23f0-4166-81e1-3c4e8e1990c5" config-ref="OrderProcessingQueue_Config" queueName="${ddDrive.order.sfsccreate.queue}" timeout="${queue.timeout}"/>
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="ddDriveOrdersProcessingwithSFSCCreate" doc:id="3e6e64a7-666a-4daf-a6f7-cb7aeec8e026" >
+		<vm:listener queueName="${ddDrive.order.sfsccreate.queue}" doc:name="Listen To DD Drive OrderProcessingSFSCCreateQueue" doc:id="a947f101-2f80-40d3-ae36-e2749259935c" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="72dac0e7-8910-436e-9e95-f851f6db745c" variableName="ip" />
+		<set-variable value="#[payload.orderPayload]" doc:name="Save Input Payload" doc:id="ec17279f-7f39-47e0-a174-034880d76de5" variableName="ipPld" mimeType="application/json" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="30bd0c39-f5ef-4bad-93b9-25f74ada8af8" variableName="correlation_id" />
+		<ee:transform doc:name="set input payload" doc:id="8a976fcb-565d-4634-b680-553819f52a8d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<try doc:name="Try" doc:id="3bdf0131-5e69-4d19-bdd0-465a528f202d">
+			<flow-ref doc:name="sfscSub_Flow" doc:id="1f0ad196-3a2c-4ee0-be5e-c8b0fb0f5c81" name="sfscSub_Flow" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="93aefae2-7aab-4670-b04b-d869c340c885" type="ANY" >
+					<logger level="INFO" doc:name="Logger" doc:id="8cb34edd-5a0d-49d1-b863-e1be0597bcc6" message='#[output application/java --- vars.correlation_id  as String ++ "  :: " ++ if(isEmpty(error.description)) "SFSC create customer call Failed" else error.description as String]' category="com.caseys.orderrouter"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="setting Payload with CID" doc:id="e1aeab04-3c77-4e41-8134-d222e0b4861d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.ipPld  - "contactInfo" ++ (contactInfo: vars.ipPld.contactInfo  ++ {customerMasterNumber: vars.cid default ""}) ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="4a8dce4c-93d6-44f8-8fa1-1e9b4d3f03d0" name="storeAgentCalling_Flow"/>
+		<async doc:name="Async" doc:id="b41d1124-d29b-4180-8359-3c732b433a76">
+			<flow-ref doc:name="Punch-Sub_Flow" doc:id="b67bb200-b1f9-43e8-8a24-1c9ac1b2bbef" name="Punch-Sub_Flow" />
+		
+</async>
+		<flow-ref doc:name="Delivery Creation Sub Flow" doc:id="19df8a4d-8435-4879-a7e7-4a8f9ad261b0" name="create_deliverySub_Flow" target="createdeliveryResponse" targetValue="#[payload]" />
+		<choice doc:name="Choice" doc:id="6723d11e-c2f6-4c2a-9f83-dfee64ee607b">
+				<when expression="#[vars.createdeliveryResponse.cancelOrderFlag default false]">
+					<logger level="INFO" doc:name="Drive Orde Cancel Log" doc:id="83ceeb7c-12d8-4e0b-9c65-c1eb75397491" message="#[vars.correlation_id]:: Hybris Order Cancellation Request Sent, Skipping  Calls" category="com.caseys.orderrouter"/>
+				<set-variable value="500" doc:name="Set Failure Order Submission Status" doc:id="dfbfbb9a-fac3-4a50-b347-39941c9c5c14" variableName="orderSubmissionStatus" />
+				</when>
+			<otherwise>
+					<ee:transform doc:name="Payload with Delivery ID" doc:id="50b10927-759b-49de-813e-0c022669f443">
+							<ee:message>
+								<ee:set-payload resource="dwl\sfmc_dddrive_payload.dwl" />
+							</ee:message>
+						</ee:transform>
+				<ee:transform doc:name="Set Hybris Status" doc:id="a2f59df2-27d7-4d17-ae7f-73d7de1e41b1">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="hybrisStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.info.deferred == 'NOTICE')
+	p('store.futurestatus.success')
+else
+	p('store.status.success')
+	]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+				<set-variable value="200" doc:name="Set Order Submission Status" doc:id="db608d1e-abc1-42a4-98d4-c8f76e30a1f6" variableName="orderSubmissionStatus" />
+					<async doc:name="Async" doc:id="435d2132-b798-439e-8a2a-731f596d33ce">
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="96c1034f-da35-44ce-ad13-1c8cff5a427f" name="DWH-Sub_Flow" />
+			
+		</async>
+				</otherwise>
+			</choice>
+	
+<async doc:name="Async" doc:id="1350c24f-8eea-4f62-820a-7aa74085dcba">
+						<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="d28a9fdf-7249-4c7e-8414-dd6147faffd0" name="sfmc_notificationsSub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="f30ee49b-38dc-421a-9e87-b678d36aeb00">
+						<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="4ddeb819-7f5b-47d7-bae5-0c02e19e5919" name="Lazyupdate-Sub_Flow" />
+					</async>
+		<error-handler  name="Global_Error_Handler" ref="Global_Error_Handler"/>
+</flow>
+	<flow name="ddDriveOrdersProcessingwithSFSCUpdate" doc:id="2ffb3cb3-aa85-4342-a806-0fc12dae16de" >
+		<vm:listener queueName="${ddDrive.order.sfscupdate.queue}" doc:name="Listen To DriveOrderProcessingSFSCUpdateQueue" doc:id="f862cc07-4f84-409f-b535-651abe644718" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="22a1c64f-2fab-4262-947b-19e5653f0759" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="b13e3158-c73b-4d40-afc0-2ae1c97eb240" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="3b20b1b0-a553-492f-88f1-5dc6517361e9" variableName="cid"/>
+		<ee:transform doc:name="set input payload" doc:id="0d30db33-550f-4eae-bfd8-cc06c0594e2c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	 <flow-ref doc:name="storeAgentCalling_Flow" doc:id="7293fb72-391e-4459-9196-99593d6cfc6d" name="storeAgentCalling_Flow"/>
+ 		<async doc:name="Async" doc:id="e1eddcd0-32c3-4015-bc5a-67b3c4070f94">
+						<flow-ref doc:name="Punch-Sub_Flow" doc:id="90943897-4a7e-4983-8aca-f3e239ac4bd5" name="Punch-Sub_Flow" />
+					</async>
+		<flow-ref doc:name="Delivery Creation Sub Flow" doc:id="3776f607-4fa8-4ff7-90af-3fa140d9e221" name="create_deliverySub_Flow" target="createdeliveryResponse" targetValue="#[payload]" />
+		<choice doc:name="Choice" doc:id="2e1125db-fa31-4aa3-a985-5a272ca32261">
+				<when expression="#[vars.createdeliveryResponse.cancelOrderFlag default false]">
+					<logger level="INFO" doc:name="Drive Orde Cancel Log" doc:id="2e40a9e3-ee9e-4e1d-8fa8-11bf83919297" message="#[vars.correlation_id]:: Hybris Order Cancellation Request Sent, Skipping  Calls" category="com.caseys.orderrouter"/>
+					<set-variable value="500" doc:name="Set Failure Order Submission Status" doc:id="7f37a3c3-d988-4347-9828-5014458a99a8" variableName="orderSubmissionStatus" />
+				</when>
+				<otherwise>
+					<ee:transform doc:name="Set Hybris Status" doc:id="d039689b-8edb-4855-a46c-995e7afa8d33">
+							<ee:message />
+							<ee:variables>
+							<ee:set-variable variableName="hybrisStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.info.deferred == 'NOTICE')
+	p('store.futurestatus.success')
+else
+	p('store.status.success')
+	]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+				<ee:transform doc:name="Payload with Delivery ID" doc:id="91809db1-1872-4052-b014-6b472ed2f517">
+							<ee:message>
+							<ee:set-payload resource="dwl\sfmc_dddrive_payload.dwl" />
+							</ee:message>
+						</ee:transform>
+				<set-variable value="200" doc:name="Set Order Submission Status" doc:id="d592374b-2e8c-4ee8-8f2f-52f10696f783" variableName="orderSubmissionStatus" />
+				<async doc:name="Async" doc:id="c817a8b0-f0fd-4c38-a5d2-80467ece9cac">
+			<flow-ref doc:name="sfscUpdateSub_Flow" doc:id="a90f84b8-e972-4a94-96c9-e56ea202da6a" name="sfscUpdateSub_Flow" />
+		</async>
+					<async doc:name="Async" doc:id="7181ee92-7111-4059-adc9-08f561f9f1f0">
+						<flow-ref doc:name="DWH-Sub_Flow" doc:id="dc3e9b09-2a0f-45cf-9f30-28fda8a9ef5e" name="DWH-Sub_Flow" />
+					</async>
+				</otherwise>
+			</choice>
+		<async doc:name="Async" doc:id="868c4699-6016-4c2b-ad88-70e9212129df">
+						<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="d8bb9118-9084-427c-93a8-8688aa74fb74" name="Lazyupdate-Sub_Flow" />
+					</async>
+		<async doc:name="Async" doc:id="80a0dea7-e8e0-4c30-bcd9-371bf594859f">
+						<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="bdff960d-37a0-4120-9164-5414183d2eb9" name="sfmc_notificationsSub_Flow" />
+					</async>
+		<error-handler doc:name="UpdateFlow_Error_Handler" ref="UpdateFlow_Error_Handler" doc:description="UpdateFlow_Error_Handler"/>
+</flow>
+	<flow name="ddDriveOrdersProcessing" doc:id="dadb31b0-929f-4f66-9258-f7737bcf2b21" >
+		<vm:listener queueName="${ddDrive.order.queue}" doc:name="Listen To DriveOrderProcessingQueue" doc:id="ef92dadd-cc33-41de-958b-5e6167eabd13" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="391cb3fa-022c-44cf-806d-f096cbc40623" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="431f6046-e2a8-4b2b-a268-7f17cff56af6" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="75df7354-186c-4efa-b25a-ebb479db2f6e" variableName="cid"/>
+		<ee:transform doc:name="set input payload" doc:id="fb865f9f-9e55-4cc6-bace-ccd05ffb85db">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="68effdb2-7a91-4869-98c0-ec2d2c3189e6" name="storeAgentCalling_Flow"/>
+		<async doc:name="Async" doc:id="de0f3cde-c8ae-4ce2-84a1-5c5d22171cf9">
+			<flow-ref doc:name="Punch-Sub_Flow" doc:id="b3e0a930-aecc-4b26-be25-be58fc4ae088" name="Punch-Sub_Flow" />
+		</async>
+		<flow-ref doc:name="Delivery Creation Sub Flow" doc:id="7308d3f7-b927-4f49-ae7c-26f21aa44bbb" name="create_deliverySub_Flow" target="createdeliveryResponse" targetValue="#[payload]" />
+		<choice doc:name="Choice" doc:id="e5d14605-26de-41c6-bc15-057761d9389d">
+				<when expression="#[vars.createdeliveryResponse.cancelOrderFlag default false]">
+					<logger level="INFO" doc:name="Drive Orde Cancel Log" doc:id="3e553096-432a-406a-abec-41734f350316" message="#[vars.correlation_id]:: Hybris Order Cancellation Request Sent, Skipping  Calls" category="com.caseys.orderrouter"/>
+					<set-variable value="" doc:name="Set Order Submission Status" doc:id="758d0f02-f566-4882-9565-42cbd637332a" variableName="orderSubmissionStatus" />
+				</when>
+				<otherwise>
+				<ee:transform doc:name="Set Hybris Status" doc:id="514210f0-b9cd-4507-81ec-3e9aff6be1be">
+					<ee:message>
+					</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="hybrisStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.info.deferred == 'NOTICE')
+	p('store.futurestatus.success')
+else
+	p('store.status.success')
+	]]></ee:set-variable>
+						</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Payload with Delivery ID" doc:id="180174e1-bc0e-4254-929e-dd40dfa5e7d8">
+						<ee:message>
+						<ee:set-payload resource="dwl\sfmc_dddrive_payload.dwl" />
+						</ee:message>
+					</ee:transform>
+				<set-variable value="200" doc:name="Set Order Submission Status" doc:id="875786f6-7d31-48fc-8de4-97c939a64226" variableName="orderSubmissionStatus" />
+				<async doc:name="Async" doc:id="3aac7e21-a762-4928-86e8-841bb03af8c8">
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="4f58651f-a746-43de-82ec-044491a38b77" name="DWH-Sub_Flow" />
+		</async>
+				</otherwise>
+			</choice>
+		<async doc:name="Async" doc:id="f4160fb6-f5d1-47aa-9270-bcc340c719a8">
+				<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="ffffc015-b7cd-4681-8d9c-2b54401df6cc" name="Lazyupdate-Sub_Flow" />
+			</async>
+		<async doc:name="Async" doc:id="4d33f44a-3504-410c-84fb-d39e3f82270c">
+			<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="a58f1c75-6716-4bf1-87fc-9750e9513833" name="sfmc_notificationsSub_Flow" />
+			
+		
+</async>
+		<error-handler  name="Global_Error_Handler" ref="Global_Error_Handler"/>
+</flow>
+	<flow name="cancelddDriveOrdersProcessing" doc:id="aa8f8c4c-ac39-411f-99cf-fba8f4bf05a0" >
+		<vm:listener queueName="${ddDrive.cancel.order.queue}" doc:name="Listen ToDD Drive CancelOrderProcessingQueue" doc:id="978ef92c-a495-46ba-909d-8c2c5512ab6e" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="c94f1b6f-e93c-4e64-ae2a-8a335d11a91c" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="98b2bc17-9c6e-4514-89d4-e2fd7510d9ed" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="c1969923-57c8-4250-900b-7fc2700f07cd" variableName="cid"/>
+		<ee:transform doc:name="set input payload" doc:id="bf3340d8-7d42-4756-8eff-4bcfbf288947">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="4190179d-d438-450b-94c8-83c037e21e95" name="storeAgentCalling_Flow"/>
+		<async doc:name="Async" doc:id="548c6c96-2c1b-4299-aece-b7367c3bebf1">
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="39be295c-174d-48cf-b6e3-4c7e5225d5bb" name="DWH-Sub_Flow" />
+		</async>
+		<choice doc:name="deliveryId Exist" doc:id="043f91be-075d-484f-bca7-fe9571d47a6b" >
+			<when expression="#[not isEmpty(payload.info.thirdPartyDeliveryId)]">
+				<async doc:name="Async" doc:id="e3d74ae5-294a-4b06-b44e-707e6ca1ad88">
+			<set-variable value="200" doc:name="Set Order Submission Status" doc:id="e4730368-1cfd-4c48-b5fa-c2c60dd716ee" variableName="orderSubmissionStatus" />
+			<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="e668d6d6-a587-491c-b013-11ad9ee3c0e9" name="sfmc_notificationsSub_Flow" />
+			
+		
+</async>
+				<async doc:name="Async" doc:id="b7a27883-160e-45f8-9a6f-651f6a353882" >
+					<set-variable value="#[payload.info.thirdPartyDeliveryId]" doc:name="Set DeliveryId" doc:id="21fc16ab-1b32-4967-8117-04797b3f7ed9" variableName="deliveryId"/>
+					<flow-ref doc:name="Cancel DD Delivery Flow " doc:id="65cec136-3d6d-463b-aadc-e840135262bf" name="cancel_dd_delivery_SubFlow" />
+				</async>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Skip Log" doc:id="e8b32679-5c8f-4ce2-8b08-747af991b966" message="#[vars.correlation_id] :: No  SFMC Cancellations Mail and DD Drive Cancellation" category="com.caseys.orderrouter"/>
+			</otherwise>
+		</choice>
+		<error-handler  name="Cancel_Error_Handler" ref="Cancel_Error_Handler"/>
+</flow>
+	<flow name="create_deliverySub_Flow" doc:id="f04af843-c555-49a5-8b39-c040d692600a" >
+		<choice doc:name="Choice" doc:id="b1539c3d-3476-4a4f-97ab-cded23fafbe4" >
+			<when expression="#[(payload.info.deferred == 'MAKE' and payload.info.status == 'SUBMITTED_TO_STORE_FUTURE')]">
+				<logger level="INFO" doc:name="Skip DD Drive Call " doc:id="e2dec94f-8756-4859-84b9-a520a88aa6c5" message="#[vars.correlation_id] :: Future Order MAKE reuqest , hence DoorDash Drive Call Skipped" category="com.caseys.orderrouter"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Payload" doc:id="04e77e93-d68a-472d-a796-eef4da2025e2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+var skipEntiresArray = p('dd.drive.skipentriescount.list') splitBy ","
+output application/json
+---
+{
+    "pickup_address" : {
+        "city" : payload.store.address.city,
+        "state" : payload.store.address.state,
+        "street" : payload.store.address.address1,
+        ("unit" : payload.store.address.address2)if(payload.store.address.address2?),
+        "zip_code" : payload.store.address.postalCode[0 to 4] 
+    },
+    "pickup_phone_number" : payload.store.phoneNumber,
+    "dropoff_address" : {
+        "city" : payload.deliveryAddress.city,
+        "state" : payload.deliveryAddress.state,
+        "street" : payload.deliveryAddress.address1,
+        ("unit" : payload.deliveryAddress.address2) if(payload.deliveryAddress.address2?), 
+        "zip_code" : payload.deliveryAddress.postalCode[0 to 4] 
+    },
+    "customer" : {
+        "phone_number" : payload.contactInfo.phoneNumber,
+        "first_name" : payload.contactInfo.firstName,
+        "last_name" : payload.contactInfo.lastName default "NA#",
+        ("email" : payload.contactInfo.emailId) if(payload.contactInfo.emailId?),
+        "should_send_notifications" : true as Boolean
+    },
+    "order_value" : payload.info.subtotal * 100,
+    ("delivery_time" : payload.info.estimatedDeliveryTime as DateTime {format : "yyyy-MM-dd'T'HH:mm:ssxx"} >> "UTC"  as String {format : "YYYY-MM-DD'T'HH:mm:SS"} ) if (payload.info.promiseType == "FUTURE"),
+	("pickup_time" : payload.info.promised as DateTime {format : "yyyy-MM-dd'T'HH:mm:ssxx"} >> "UTC"  as String {format : "YYYY-MM-DD'T'HH:mm:SS"} ) if (payload.info.promiseType != "FUTURE"),
+    //"pickup_business_name"  : payload.store.name,
+    "pickup_business_name"  : Mule::p('dd.drive.pickup.business.name'),
+    "pickup_instructions"   : payload.info.pickupInstruction,
+    "dropoff_instructions"  : payload.deliveryAddress.deliveryInstructions,
+    "tip" : (payload.info.tip default 0) * 100,
+    "external_delivery_id" : payload.info.code,
+    "external_store_id" : payload.store.number,
+    "contains_alcohol" : payload.info.hasAgeRestrictedItems default false,
+    "num_items" : payload.entries reduce ((entry, quantity=0) -> (quantity + (if(skipEntiresArray contains entry.productType)
+																			        0
+																			    else
+																			        (entry.quantity default 0 as Number))) ),
+	 items: payload.entries map ((item, index) -> {
+				name:item.productName,
+				quantity: item.quantity as Number
+				})																			    
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<logger level="INFO" doc:name="Log DD Drive Request" doc:id="4ac4d72e-8df4-4c67-a6ec-d4c5fccb8e6a" message="#[vars.correlation_id] :: DD Drive Request Payload :: #[payload]" category="com.caseys.orderrouter.payload"/>
+				<until-successful maxRetries="${dd.drive.error.retry}" doc:name="Until Successful" doc:id="93464e41-932a-4b53-ab3d-24ae3586b8a2" millisBetweenRetries="${dd.drive.retry.freq}">
+			<try doc:name="Try" doc:id="997f41ff-1c9f-4e73-b0c3-9622aeb6788f">
+						<http:request method="POST" doc:name="DD Create Delivery System API Call" doc:id="946396b6-1aab-4bd9-b73c-65e9a7134492" config-ref="HTTP_DoorDash_Request_configuration" path="${dd.drive.orders.path}" outputMimeType="application/json" />
+				<logger level="INFO" doc:name="Log DD Drive Response" doc:id="839ab693-2daf-470c-9df3-75eff94b8afe" message="#[vars.correlation_id] :: DD Drive Resonse :: #[payload]" category="com.caseys.orderrouter.payload"/>
+				<error-handler>
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="22ae9b2e-eeed-42ca-84da-1c7fffd32c8a" type="${dd.drive.error.type}">
+						<logger level="INFO" doc:name="Retry Log" doc:id="126ed0df-fe2c-4ffb-9fc9-079b626e246e" message="#[vars.correlation_id]:: Retrying DD Driver Create Delivery Request after Failure" category="com.caseys.orderrouter"/>
+					</on-error-propagate>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="73970067-7249-41b4-a6f4-4d850ac83815" type="ANY">
+						<logger level="INFO" doc:name="Error Log" doc:id="f70ad684-f331-4d6c-8a22-4308dab131d9" message="#[vars.correlation_id] :: DD Drive Create Delivery Request Failed With Error  :: #[error.description]" category="com.caseys.orderrouter"/>
+								<ee:transform doc:name="Set Payload" doc:id="effc7f11-5cf9-451a-ab02-ca6edc73e0d0" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"hybrisStatus" : p('store.status.cancelled'),
+	"cancelOrderFlag" : true as Boolean
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</until-successful>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d9b327c5-73de-4b55-84b7-c99e5af0aab2" type="ANY">
+				<logger level="INFO" doc:name="Error Log" doc:id="487baf39-6418-492f-8a70-3f11cc1a3ef3" message="#[vars.correlation_id] :: DD Drive Create Delivery Request Failed With Error After Retries  :: #[error.description]" category="com.caseys.orderrouter"/>
+				<ee:transform doc:name="Transform Message" doc:id="a8bf7157-2310-4ff4-8338-33a7979018e1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"hybrisStatus" : p('store.status.cancelled'),
+	"cancelOrderFlag" : true as Boolean
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="cancel_dd_delivery_SubFlow" doc:id="477a4b38-3115-4eb3-b279-29f1395334e3" >
+		<ee:transform doc:name="Transform Request Payload" doc:id="4fd92618-e395-4acd-b25d-b4b44524b102">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"reason_code" : payload.info.cancellationReason
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="b886590f-7c17-476a-86a3-78ef3f33342e" message="#[vars.correlation_id] :: DD Drive Cancel Order Request Payload :: #[payload]" category="com.caseys.orderrouter.payload"/>
+		<until-successful maxRetries="${dd.drive.error.retry}" doc:name="Until Successful" doc:id="171d51c3-eceb-4143-87b6-5ca1c1d1bb6a" millisBetweenRetries="${dd.drive.error.freq}">
+			<try doc:name="Try" doc:id="2fdc3064-b286-49d6-a786-a757818cb68e">
+			<http:request method="PUT" doc:name="DD Drive Cancellation Request" doc:id="17262361-29d5-4799-b632-bc23c458b893" config-ref="HTTP_DoorDash_Request_configuration" path="${dd.drive.cancel.orders.path}" >
+					<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"deliveryId" : vars.deliveryId
+}]]]></http:uri-params>
+				</http:request>
+				<logger level="INFO" doc:name="Log DD Drive Cancel Response" doc:id="c20fca11-497c-4170-8695-a2bba6d6fe8e" message="#[vars.correlation_id] :: DD Drive Cancel Order Resonse :: #[payload]" category="com.caseys.orderrouter.payload"/>
+				<error-handler >
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="7909fff0-ed02-4ad5-98e4-5368745ef1d3" type="${dd.drive.error.type}">
+						<logger level="INFO" doc:name="Retry Log" doc:id="af9b32b9-eacc-4129-a09c-f28abb606a9f" message="#[vars.correlation_id]:: Retrying DD Driver Cancel Delivery Request  after Failure" category="com.caseys.orderrouter"/>
+					</on-error-propagate>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="79d7b9a1-9fcc-4846-861c-4a104dfc8559" type="ANY">
+						<logger level="INFO" doc:name="Error Log" doc:id="8fb87baf-fce5-40a3-9f8d-90ba1dfcddd3" message="#[vars.correlation_id] :: DD Drive Cancel Delivery  Request Failed With Error  :: #[error.description]" category="com.caseys.orderrouter"/>
+					</on-error-continue>
+				</error-handler>
+		</try>
+		</until-successful>
+	</flow>
+	
+</mule>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd">
+	
+	
+	<flow name="cancelordersFlow" doc:id="66892737-321b-439c-a46a-5825d6d091f9" >
+		<ee:transform doc:name="Request Transform" doc:id="f4dbdc31-b8e1-4b4f-9d30-3e63521c800b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	cid: attributes.headers.customermasternumber default "",
+	ip: attributes.headers.'IP',
+	flowName: "Cancel"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<vm:publish queueName="${cancel.order.queue}" doc:name="Publish to CancelOrderProcessingQueue" doc:id="e748f4c9-d3a0-4b21-9b6f-76ced92c9a99" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}">
+			<reconnect frequency="${queue.freq}" count="${queue.attempts}" />
+		</vm:publish>
+	</flow>
+	<flow name="canceldddriveorderFlow" doc:id="6b628076-791d-4916-b701-a375e29a04e0" >
+		<ee:transform doc:name="Request Transform" doc:id="1b477d63-3505-42f6-89ed-3dc88017a9dc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	cid: attributes.headers.customermasternumber default "",
+	ip: attributes.headers.'IP',
+	flowName: "Cancel",
+	thirdPartyDeliveryPartner :  attributes.headers.thirdPartyDeliveryPartner default ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<vm:publish doc:name="Publish to DD Drive CancelOrderProcessingQueue" doc:id="6e531ed9-bac8-4a3b-a38c-c90c36091765" config-ref="OrderProcessingQueue_Config" queueName="${ddDrive.cancel.order.queue}" timeout="${queue.timeout}"/>
+	</flow>
+	
+	
+</mule>

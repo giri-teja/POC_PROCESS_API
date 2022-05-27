@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd 
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd 
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd 
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	
+		<http:request-config name="UE_HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="9faeba19-f3ba-4836-a9a3-d09b6be64afb" basePath="${ubereats.sa.basepath}" responseTimeout="${ubereats.sa.response.timeout}">
+		<http:request-connection protocol="HTTPS" host="${ubereats.sa.host}" port="${ubereats.sa.port}" maxConnections="${ubereats.sa.max.connections}" connectionIdleTimeout="${ubereats.sa.connection.idle.timeout}" responseBufferSize="${ubereats.sa.response.buffer.size}" tlsContext="TLS_Context">
+			<reconnection >
+				<reconnect frequency="${ubereats.sa.retry.frequency}" count="${ubereats.sa.retry.attempts}" />
+			</reconnection>
+		</http:request-connection>
+		<http:default-headers >
+			<http:default-header key="client_id" value="${ubereats.sa.client.id}" />
+			<http:default-header key="client_secret" value="${ubereats.sa.client.secret}" />
+		</http:default-headers>
+	</http:request-config>
+	<http:listener-config name="order-httpListenerConfig">
+        <http:listener-connection host="${https.listener.host}" port="${https.listener.port}" protocol="HTTPS">
+			<tls:context >
+				<tls:key-store type="jks" path="${key.path}" keyPassword="${key.keypassword}" password="${key.password}" />
+			</tls:context>
+		</http:listener-connection>
+    </http:listener-config>
+    <apikit:config name="order-config" raml="api/caseys-pa-orders-api.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+      
+ 	<api-gateway:autodiscovery apiId="${api.id}" doc:name="API Autodiscovery" doc:id="d4cf8750-72ba-4e05-be14-01fc91627e22" flowRef="order-router-main" />
+
+	<http:request-config name="Customer_Request_configuration" doc:name="HTTP Request configuration" doc:id="690949fe-ff0e-4f44-9a9f-1bdf46dd333a" responseTimeout="${https.sfsc.response.timeout}">
+		<http:request-connection protocol="HTTPS" host="${sfsc.host}" port="${sfsc.port}" >
+			<reconnection >
+				<reconnect frequency="${sfsc.freq}" count="${sfsc.attempts}"/>
+			</reconnection>
+			<tls:context >
+				<tls:trust-store insecure="true" />
+			</tls:context>
+		</http:request-connection>
+	</http:request-config>
+	<http:request-config name="SFMC_Notification_Request_configuration" doc:name="HTTP Request configuration" doc:id="9f20076f-5cfb-4dc2-8b3d-9de39f787158" responseTimeout="${https.sfmc.response.timeout}">
+		<http:request-connection host="${sfmc.notification.host}" port="${sfmc.notification.port}" protocol="HTTPS">
+			<reconnection >
+				<reconnect frequency="${sfmc.freq}" count="${sfmc.attempts}" />
+			</reconnection>
+			<tls:context >
+				<tls:trust-store insecure="true" />
+			</tls:context>
+
+		</http:request-connection>
+	</http:request-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="677bccd4-4782-4fb4-9c91-3dc2b05adcd2" file="config/orders-process-${env}.properties"/>
+	<http:request-config name="SMTP_Notification_Request_configuration" doc:name="HTTP Request configuration" doc:id="dc31fa36-8add-48e7-a7a3-fef18d129044" responseTimeout="${http.email.notification.response.timeout}" basePath="${http.email.notification.basepath}">
+		<http:request-connection protocol="HTTPS" host="${http.email.notification.api.host}" port="${http.email.notification.api.port}" connectionIdleTimeout="${http.email.notification.connection.timeout}">
+			<reconnection >
+				<reconnect frequency="${http.email.notification.retry.freq}" count="${http.email.notification.retry.attempts}" />
+			</reconnection>
+		</http:request-connection>
+	</http:request-config>
+	<vm:config name="OrderProcessingQueue_Config" doc:name="VM Config" doc:id="fc88a821-14d7-467a-b221-f25d6d30f70a" >
+		<vm:connection >
+			<reconnection >
+				<reconnect frequency="${queue.freq}" count="${queue.attempts}" />
+			</reconnection>
+		</vm:connection>
+		<vm:queues >
+			<vm:queue queueName="${cancel.order.queue}"/>
+			<vm:queue queueName="${order.queue}"/>
+			<vm:queue queueName="${reprint.order.queue}"/>
+			<vm:queue queueName="${deliveryprint.queue}"/>
+			<vm:queue queueName="${order.sfscupdate.queue}"/>
+			<vm:queue queueName="${order.sfsccreate.queue}"/>
+			<vm:queue queueName="${eodreport.queue}" />
+			<vm:queue queueName="${eodupdate.queue}" />
+			<vm:queue queueName="${doordash.order.queue}" />
+			<vm:queue queueName="${ddDrive.order.sfsccreate.queue}" />
+			<vm:queue queueName="${ddDrive.order.sfscupdate.queue}" />
+			<vm:queue queueName="${ddDrive.order.queue}" />
+			<vm:queue queueName="${ddDrive.cancel.order.queue}" />
+			<vm:queue queueName="${ubereats.order.queue}" />
+			<vm:queue queueName="${punchh.resubmit.order.queue}" />
+		</vm:queues>
+	</vm:config>
+	<http:request-config name="HTTP_Hybris_Request_configuration" doc:name="HTTP Request configuration" doc:id="d2ba7f11-a7e7-4406-91d0-df2df8af36f7" responseTimeout="${https.lazy.response.timeout}">
+		<http:request-connection protocol="HTTPS" host="${lazy.https.host}" port="${lazy.https.port}" connectionIdleTimeout="${lazy.https.connection.timeout}">
+			<reconnection >
+				<reconnect frequency="${lazy.freq}" count="${lazy.attempts}"/>
+			</reconnection>
+			<tls:context >
+				<tls:trust-store insecure="true" />
+			</tls:context>
+		</http:request-connection>
+	</http:request-config>
+	<http:request-config name="HTTP_DataWarehouse-Request_configuration" doc:name="HTTP Request configuration" doc:id="72b647ab-b9b2-4414-bf78-24ab9c80e010" >
+		<http:request-connection protocol="HTTPS" host="${https.datawarehouse.host}" port="${https.datawarehouse.port}" >
+			<reconnection >
+				<reconnect frequency="${datawarehouse.freq}" count="${datawarehouse.attempts}" />
+			</reconnection>
+			<tls:context >
+				<tls:trust-store insecure="true" />
+			</tls:context>
+		</http:request-connection>
+	</http:request-config>
+	<tls:context name="TLS_Context" doc:name="TLS Context" doc:id="38964d26-2e5d-4f11-91f2-7b0ab7c08481" >
+		<tls:trust-store insecure="true" />
+	</tls:context>
+	<http:request-config name="HTTP_Request_configuration_HTTPS" doc:name="HTTP Request configuration" doc:id="0779fff0-565d-4ee0-a22c-0755af658673" responseTimeout="${https.store.response.timeout}"  >
+		<http:request-connection tlsContext="TLS_Context" protocol="HTTPS">
+			<http:authentication >
+				<http:basic-authentication username="${store.username}" password="${store.password}" />
+			</http:authentication>
+		</http:request-connection>
+	</http:request-config>
+	<http:request-config name="HTTP_Punchh_Request_configuration" doc:name="HTTP Request configuration" doc:id="1dc42558-609a-48db-9000-0439898731d5" >
+		<http:request-connection protocol="HTTPS" host="${punchh.https.host}" port="${punchh.https.port}" connectionIdleTimeout="${punchh.connection.timeout}">
+			<reconnection >
+				<reconnect frequency="${punchh.freq}" count="${punchh.attempts}"/>
+			</reconnection>
+		</http:request-connection>
+	</http:request-config>
+	<http:request-config name="HTTP_Customer_Registration_configuration" doc:name="HTTP Request configuration" doc:id="e84bc6a9-3226-4bf9-bfaa-bcbf864434e5" basePath="${customer.base.path}" responseTimeout="${customer.response.timeout}" >
+		<http:request-connection protocol="HTTPS" host="${customer.host}" port="${customer.port}" maxConnections="${customer.max.connections}" connectionIdleTimeout="${customer.connection.timeout}" responseBufferSize="${customer.reponse.buffer.size}" tlsContext="TLS_Context" >
+			<reconnection >
+				<reconnect frequency="${customer.freq}" count="${customer.attempts}" />
+			</reconnection>
+		</http:request-connection>
+	</http:request-config>
+	<http:request-config name="HTTP_DoorDash_Request_configuration" doc:name="HTTP Request configuration" doc:id="5a856f7f-41a8-4ab7-af0b-c3c4d8b5eea0" responseTimeout="${doordash.sa.response.timeout}" basePath="#[if(isEmpty(attributes.headers.version)) ('${doordash.sa.basepath}')
+	else p('doordash.sa.basepath' ++ attributes.headers.version as String)]">
+		<http:request-connection protocol="HTTPS" host="${doordash.sa.host}" port="${doordash.sa.port}" maxConnections="${doordash.sa.max.connections}" connectionIdleTimeout="${doordash.sa.connection.idle.timeout}" responseBufferSize="${doordash.sa.response.buffer.size}" >
+			<reconnection >
+				<reconnect frequency="${doordash.sa.retry.frequency}" count="${doordash.sa.retry.attempts}" />
+			</reconnection>
+			<tls:context >
+				<tls:trust-store insecure="true" />
+			</tls:context>
+		</http:request-connection>
+		<http:default-headers >
+			<http:default-header key="client_id" value="${doordash.sa.client.id}" />
+			<http:default-header key="client_secret" value="${doordash.sa.client.secret}" />
+			<http:default-header key="driverpartner" value="doordash" />
+		</http:default-headers>
+	</http:request-config>
+</mule>

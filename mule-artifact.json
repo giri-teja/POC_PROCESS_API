@@ -1,0 +1,6 @@
+{"minMuleVersion":"4.1.3",
+"secureProperties": [
+		"key.password","key.keypassword","lazy.client_secret","sfsc.clientSecret",
+		"datawarehouse.client_secret","doordash.sa.client.secret","sfmc.notification.client_secret","http.email.notification.clientsecret","store.password","customer.clientSecret","ubereats.sa.client.secret","lazy.client_secret"
+	]
+	}

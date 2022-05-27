@@ -1,0 +1,80 @@
+#%RAML 1.0
+version: QA
+baseUri: https://mocksvc.mulesoft.com/mocks/62f5a7ef-f3ba-4cd2-8c2d-fdf041ea7748 # 
+title: caseys-pa-orders-api API
+  
+traits:
+  client-id-required:
+       headers:
+         client_id:
+           type: string
+         client_secret:
+           type: string
+
+/orders:
+  /{requestType}:
+     displayName: Route/Reprint Order Ticket
+     description: Route/Reprint Order Ticket
+     is: [client-id-required]
+     post:
+        headers:
+            IP:
+             description: ipAddress
+             type: string
+             required: false
+            customerMasterNumber:
+              description: customerId
+              type: string
+              required: false
+            Authorization:
+             description: Authorization
+             type: string
+             required: false
+            version:
+              description: Version
+              type: string
+              required: false
+        body: 
+          application/json:
+            example: !include examples/orderRequest.json
+        responses:
+          200:
+           body:
+             application/json:
+                example: !include examples/orderResponse.json
+     put:
+        headers:
+            IP:
+             description: ipAddress
+             type: string
+             required: false
+            customerMasterNumber:
+              description: customerId
+              type: string
+              required: false
+            Authorization:
+             description: Authorization
+             type: string
+             required: false
+        body: 
+          application/json:
+            example: !include examples/orderRequest.json
+        responses:
+          200:
+           body:
+             application/json:
+                example: !include examples/orderResponse.json     
+     /{orderId}:
+         displayName: Reprint Order Ticket
+         description: Reprint Order Ticket
+         is: [client-id-required]
+         post:
+           body: 
+              application/json:
+                 example: !include examples/reprintRequest.json
+           responses:
+             200:
+              body:
+                application/json:
+                  example: !include examples/reprintResponse.json
+               

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd">
+	<flow name="routeordersFlow" doc:id="0e1148c9-fd10-4efb-a1cb-e09225442d40" >
+		<!-- <set-variable value="${sfsc.clientID}" doc:name="Set client_id" doc:id="f095e384-e5cb-40fc-ac24-4722d38c988a" variableName="client_id"/>
+		<set-variable value="${sfsc.clientSecret}" doc:name="Set client_secret" doc:id="2c82fa6d-c591-47e3-a800-2b2fcb391cfb" variableName="client_secret"/>
+		 --><ee:transform doc:name="Request Transform" doc:id="52693589-b476-48db-ba77-dd9606ce76b5">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	cid: attributes.headers.customermasternumber default "",
+	ip: attributes.headers.'IP',
+	flowName: "Route"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<choice doc:name="Check Thirdy Party Order?" doc:id="07bfda2d-c591-4258-88bf-fd9e1f6c5770" >
+			<when expression="#[(not isEmpty(payload.orderPayload.info.thirdPartyDeliveryPartner)) and (upper(payload.orderPayload.info.thirdPartyDeliveryPartner) == p('doordash.check'))]" >
+				<logger level="INFO" doc:name="Log Third Party Order" doc:id="c9889d94-3a6f-42c8-9a0b-fbfb4ba3133b" message="#[vars.correlation_id] :: DoorDash Order" category="com.caseys.orderrouter"/>
+				<vm:publish queueName="${doordash.order.queue}" doc:name="Publish to DoorDash Order Processing Queue" doc:id="9b21deeb-675f-445e-9ee3-8fe1ccd85f96" config-ref="OrderProcessingQueue_Config" sendCorrelationId="AUTO" timeout="${queue.timeout}"/>
+			</when>
+			<when expression="#[isEmpty(payload.orderPayload.info.thirdPartyDeliveryPartner) and (not isEmpty(attributes.headers.customermasternumber) )]">
+				<logger level="INFO" doc:name="Log Old Customer" doc:id="0f6d2830-16cd-4346-b45e-c870970c2c76" message="#[vars.correlation_id] ::Old Customer!! " category="com.caseys.orderrouter"/>
+				<vm:publish queueName="${order.sfscupdate.queue}" doc:name="Publish to OrderProcessingSFSFUpdateQueue" doc:id="fb32d8d9-66c8-42ee-a44c-9d21f4e8c921" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}">
+							<reconnect frequency="${queue.freq}" count="${queue.attempts}" />
+						</vm:publish>
+			</when>
+			<when expression="#[isEmpty(payload.orderPayload.info.thirdPartyDeliveryPartner) and isEmpty(attributes.headers.customermasternumber) and (isEmpty(payload.orderPayload.contactInfo.emailId) and isEmpty(payload.orderPayload.contactInfo.phoneNumber))]">
+				<logger level="INFO" doc:name="Log Guest Customer" doc:id="7cd2876f-0565-42c4-bd29-ea37366d5714" message="#[vars.correlation_id] :: Guest Customer!! Without emailId and Phonenumber" category="com.caseys.orderrouter"/>
+				<vm:publish queueName="${order.queue}" doc:name="Publish to OrderProcessingQueue" doc:id="cd00bcbd-9d8f-4fe3-866e-cd4248761efd" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}">
+							<reconnect frequency="${queue.freq}" count="${queue.attempts}" />
+						</vm:publish>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name=" Log New Customer" doc:id="4c10da29-b7f6-4254-a6b4-be24545af5d2" message="#[vars.correlation_id]::New Customer" category="com.caseys.orderrouter"/>
+				<vm:publish queueName="${order.sfsccreate.queue}" doc:name="Publish to OrderProcessingSFSCCreateQueue" doc:id="b6d68d0b-fba6-4fda-8931-c33716c82aa9" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}">
+							<reconnect frequency="${queue.freq}" count="${queue.attempts}" />
+						</vm:publish>
+			</otherwise>
+		</choice>
+		
+	</flow>
+</mule>

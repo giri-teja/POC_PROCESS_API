@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" 
+	xmlns="http://www.mulesoft.org/schema/mule/core" 
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" 
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd">
+    <flow name="order-router-main">
+        <http:listener config-ref="order-httpListenerConfig" path="${https.listener.path}" doc:id="e6da5d43-a121-4a3e-8630-dfe1d04092a9">
+            <http:response statusCode="#[202]">
+				<http:body ><![CDATA[#[output application/json
+---
+{
+	status : p('store.status.inprogress')
+}]]]></http:body>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+            </http:error-response>
+        </http:listener>
+		<logger level="INFO" doc:name="Logging Order Acceptance" doc:id="8872836d-7f20-4723-a95d-64a74a8bd37f" message='#[output application/java --- payload.info.code  as String ++" : accepted for processing and responding 202"]' category="com.caseys.orderrouter"/>
+		<apikit:router config-ref="order-config" />
+    </flow>
+</mule>

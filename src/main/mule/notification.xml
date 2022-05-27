@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="notificationFlow" doc:id="6f81556c-34e1-464f-9b45-a3ecb6f02eb6" >
+		<set-variable value="#[payload]" doc:name="Save Incoming Payload" doc:id="cae26ba5-3754-4b95-bac5-2394140b39a3" variableName="notification" mimeType="application/json"/>
+		<ee:transform doc:name="Request Transformation" doc:id="9e3a3689-fa43-4c92-b2f5-9894104cebe7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+ "type":    '${email.notification.type.info}',
+ "subject": '${email.notification.subject.info}',
+ "message": '${email.notification.message1}' ++ " " ++ payload.store.number as String ++ " " ++ '${email.notification.message2}' ++ " " ++ payload.info.code as String default "", 
+ "recipient": splitBy('${email.notification.recipients}',",") map (
+	 				if($ contains 'XXXX') $ replace 'XXXX' with payload.store.number else $)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Notification Request" doc:id="60d87d74-dcb4-4672-91e2-ddb41305fd27" message="#[vars.correlation_id]::Notification Request::#[payload]" category="com.caseys.orderrouter.payload"/>
+			<http:request method="POST" doc:name="Notification Call" doc:id="b4c2f8f4-a204-4dbe-9b67-eba424ca0b2b" config-ref="SMTP_Notification_Request_configuration" path="${http.email.notification.path}" outputMimeType="application/json">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_id" : "${http.email.notification.clientid}",
+	"client_secret" : "${http.email.notification.clientsecret}"
+}]]]></http:headers>
+		</http:request>
+		<set-payload value="#[vars.notification]" doc:name="ReSet Payload" doc:id="01bd7909-80d4-4549-8d5a-ec8d2c29a08a" mimeType="application/json"/>
+	</flow>
+
+
+	
+	</mule>

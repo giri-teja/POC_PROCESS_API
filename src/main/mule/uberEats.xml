@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<flow name="ubereats-accept-order" doc:id="020fcde9-814d-4057-adbc-699062a4a600" >
+		<ee:transform doc:name="Set Accept Order Payload" doc:id="b0d531bf-1ec8-423c-ad8d-014ab672fd45" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="acceptOrderRequest" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"reason" : Mule::p('uber.eats.order.accept'),
+	"pickup_time" : (payload.info.promised as DateTime {format : "yyyy-MM-dd'T'HH:mm:ssxx"}) as Number,
+	"external_reference_id" : payload.info.code
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Request Log" doc:id="53baf9ec-b37c-48fb-bbfb-d644f6137f89" message='#[vars.correlation_id]:: "Uber Eats Accept Order Request " #[vars.acceptOrderRequest]' category="com.caseys.orderrouter.payload"/>
+		<until-successful maxRetries="${uber.request.retries}" doc:name="Until Successful" doc:id="d64f0daf-1cd1-4a24-bb55-cbad7c097473" millisBetweenRetries="${uber.request.freq}">
+			<try doc:name="Try" doc:id="16e60d30-359b-4bc9-ac52-3dff66c71d9d" >
+				<http:request method="POST" doc:name="Uber Eats Accept order" doc:id="1694ae36-95ee-427f-9e0e-3343477a660d" config-ref="UE_HTTP_Request_configuration" path="${ubereats.sa.accept.order.path}" target="acceptOrderResponse">
+			<http:body><![CDATA[#[vars.acceptOrderRequest]]]></http:body>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"order_id" : payload.info.thirdPartyOrderNumber
+}]]]></http:uri-params>
+		</http:request>
+				<error-handler >
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="8cf99244-5f3d-4a40-a9dd-e3b9874ead26" type="${uber.retry.error.type}">
+						<logger level="INFO" doc:name="Retry Log" doc:id="8731a2bc-ce7d-4ebf-888d-8fce06cea8c1" message="#[vars.correlation_id]:: Retrying Uber Accept Order Call" category="com.caseys.orderrouter"/>
+					</on-error-propagate>
+					
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="af6c2fb8-21bd-48d5-92fc-b008e6f37a85">
+				<logger level="INFO" doc:name="Error Log" doc:id="0d489d09-c058-46e0-88b5-1b790d9d504a" message='#[vars.correlation_id]:: "Uber Eats Accept Order Call Failed"]' category="com.caseys.orderrouter"/>
+				<ee:transform doc:name="Update Payload with Cancelled Order Flag" doc:id="11862d62-7811-44ec-a3a7-3dfeffcad2d0">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ {"uberOrderCancelled" : true as Boolean}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<async doc:name="Async" doc:id="0b288b81-a0f7-431d-97eb-d169b209f484">
+					<flow-ref doc:name="Deny Uber Eats Order Flow Reference" doc:id="e40e2305-d8b1-4c91-af6c-d0c37debed55" name="ubereats-deny-order" />
+				</async>
+			</on-error-continue>
+									</error-handler>
+			</try>
+		</until-successful>
+		<logger level="INFO" doc:name="Response Log" doc:id="4b0cd131-11af-475f-b793-26c535106b6a" message='#[vars.correlation_id]:: "Uber Eats Accept Order Response"' category="com.caseys.orderrouter"/>
+	
+</flow>
+	
+	<flow name="ubereats-deny-order" doc:id="87a8ca1c-4202-487d-9a5d-dae72035e340" >
+		<ee:transform doc:name="Set Deny Order Payload" doc:id="34d15d77-7c56-4055-90e9-329765c03891" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="denyOrderRequest" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"reason"  :{
+			"explanation" :  Mule::p('ubereats.deny.errorMessage'),
+			"code"        :  Mule::p('ubereats.errorCode.storeUnavailable')    
+	}
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Request Log" doc:id="d7a54bb8-53ad-4593-adf7-3d4bc50426a7" message='#[vars.correlation_id]:: "Uber Eats Deny Order Request " #[vars.denyOrderRequest]' category="com.caseys.orderrouter.payload"/>
+		<http:request method="POST" doc:name="Uber Eats Deny Order" doc:id="a35964cc-151d-4a17-bfe0-fc59aa73d5ad" config-ref="UE_HTTP_Request_configuration" path="${ubereats.sa.deny.order.path}">
+			<http:body><![CDATA[#[vars.denyOrderRequest]]]></http:body>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"order_id" : payload.info.thirdPartyOrderNumber
+}]]]></http:uri-params>
+		</http:request>
+		<logger level="INFO" doc:name="Response Log" doc:id="b21071b7-f23a-41ae-90b6-5af2f324651d" message='#[vars.correlation_id]:: "Uber Eats Deny Order Response"' category="com.caseys.orderrouter"/>
+	</flow>
+	</mule>

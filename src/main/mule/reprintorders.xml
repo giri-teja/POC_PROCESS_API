@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="reprintordersFlow" doc:id="56235150-6c5f-42d1-bd7b-1c8799cb81ed" >
+		 <ee:transform doc:name="Request Transform" doc:id="bb56ff68-055d-44fc-a2aa-ba35c130454b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	cid: attributes.headers.customermasternumber default "",
+	ip: attributes.headers.'IP',
+	flowName: attributes.uriParams.requestType
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		 <vm:publish queueName="${reprint.order.queue}" doc:name="Publish to OrderProcessingRePrintQueue" doc:id="bdb71127-763d-4af0-832f-70ed9a448f98" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}">
+			<reconnect frequency="${queue.freq}" count="${queue.attempts}" />
+		</vm:publish>
+		<!-- <ee:transform doc:name="Response Transform" doc:id="30a5ddaa-9332-49ca-97c0-adc77b2532b8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+{
+	status : "Order successfully placed with store"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform> -->
+	</flow>
+</mule>

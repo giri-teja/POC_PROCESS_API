@@ -1,0 +1,817 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd 
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	
+	<flow name="PunchhReSubmit_orderprocessing_Flow" doc:id="bc268960-aa90-4e57-b7ea-750ee7ecca69" >
+		<vm:listener queueName="${punchh.resubmit.order.queue}" doc:name="Listener Punchh ReSubmit Processing Queue" doc:id="b2d0fed4-970f-4a47-8ea3-efacf6b19f2f" config-ref="OrderProcessingQueue_Config" numberOfConsumers="${queue.noOfConsumers}" timeout="${queue.timeout}"/>
+		<set-variable value="#[payload.info.code]" doc:name="Set Correlation Id" doc:id="a07e720c-cddf-4dfd-b770-aa177b418bac" variableName="correlation_id"/>
+		<logger level="INFO" doc:name="Logger" doc:id="f38ff776-8530-40ac-8c17-329c74fe8a49" message='#[vars.correlation_id]:: "In Punchh ReSubmit Flow"'/>
+		<ee:transform doc:name="Set Input Payload" doc:id="9d4676f2-bc02-4dd8-8273-d31ceab04c88" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Punch-Sub_Flow Reference" doc:id="cf98c3d2-eb2a-42c1-a8b3-a4cfe05db518" name="Punch-Sub_Flow"/>
+	</flow>
+	<flow name="Doordash_orderprocessing_Flow" doc:id="b507ffbf-1acd-43f4-b8ad-2b245466a7fb" >
+		<vm:listener queueName="${doordash.order.queue}" doc:name="Listen to Doordash Order Processing Queue" doc:id="a3346718-5654-4c06-aaef-094ef4dee280" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}" config-ref="OrderProcessingQueue_Config"/>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="0ab9952e-5c69-40de-a47b-9f7b62afe468" variableName="ip"/>
+		<ee:transform doc:name="Set Input Payload" doc:id="7a2a279b-e9d1-4571-9cc1-a00266430aba" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload.info.code]" doc:name="Save correlation_id" doc:id="8c1aa13d-b6a8-4ddb-bb6a-bcbb0cb86e88" variableName="correlation_id" />
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="76b3c512-2fc5-4f53-a2a1-ca792e0ca869" name="storeAgentCalling_Flow" />
+		<async doc:name="Async" doc:id="630200e8-3e20-4ca5-8edf-b49d965eb06c" >
+			<choice doc:name="Choice" doc:id="ec76277e-b0be-44b9-a5aa-e27e6997a81f">
+			<when expression="#[isEmpty(payload.contactInfo.emailId) and isEmpty(payload.contactInfo.phoneNumber)]">
+					<logger level="INFO" doc:name="Skipping SFSC Call" doc:id="4d2b00f7-f0ce-472b-be2a-cca16c3e39b1" message='#[vars.correlation_id]:: "SFSC Call Skipped"' category="com.caseys.orderrouter"/>
+				</when>
+				<otherwise >
+					<logger level="INFO" doc:name="Calling SFSC Flow" doc:id="c5799733-36d0-49d4-b072-6bda15fb5a0a" message='#[vars.correlation_id]:: "Making SFSC Call"' category="com.caseys.orderrouter"/>
+					<flow-ref doc:name="sfscSub_Flow" doc:id="5c9d3fc0-2194-4849-a9ce-7f95c80a1025" name="sfscSub_Flow" />
+				
+</otherwise>
+		</choice>
+		</async>
+		<async doc:name="Async" doc:id="4ae38e1e-73bc-41a7-8a40-770dbc37dc7c">
+			<flow-ref doc:name="dwh_service_Sub_Flow" doc:id="e08c2ad4-8651-47ae-b133-9cd997ea6e6f" name="dwh_service_Sub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="4b7b2a65-838b-4bcb-8f89-431c93f450c9" >
+			<try doc:name="Try" doc:id="f0a0223c-0998-40a3-aac9-2cecaa508b06">
+				<ee:transform doc:name="DD Order Update Transform" doc:id="1d80a6c4-c365-4b05-ae78-b08da93add55">
+				<ee:message>
+				</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwl\dd_success_payload.dwl" variableName="ddPayload" />
+					</ee:variables>
+			
+</ee:transform>			<flow-ref doc:name="call_DD_SA_API" doc:id="1ffea14e-3fd8-4213-9905-f2af5ee1efe0" name="call_DD_SA_API"/>
+				<set-variable value="#[p('store.status.success')]" doc:name="Set Hybris Success Status" doc:id="57961f0e-be3d-4fba-b80f-232d54e2435b" variableName="hybrisStatus" />
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="55f113d5-5e2f-4b7f-b48a-f05c5dc40960" >
+						<logger level="ERROR" doc:name="Error Log" doc:id="c2d25201-25aa-46f1-84ed-1581d1b83529" message="#[vars.correlation_id] :: Call to DD API failed" category="com.caseys.orderrouter"/>
+						<set-variable value="#[p('store.status.cancelled')]" doc:name="Set hybris Cancel Status" doc:id="dd1c3de9-525c-4abe-8509-b41a209875e6" variableName="hybrisStatus"/>
+					
+</on-error-continue>
+			</error-handler>
+		</try>
+			<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="3d12e62a-c105-4394-bb24-a979e282af2d" name="Lazyupdate-Sub_Flow" />
+		</async>
+		<error-handler  name="Global_Error_Handler" ref="Global_Error_Handler"/>
+	</flow>
+	<flow name="uberEatsOrdersProcessing" doc:id="f3da8319-2780-46a0-b733-abf85f5da399" >
+		<vm:listener queueName="${ubereats.order.queue}" doc:name="Listen To uberEatsOrderProcessingQueue" doc:id="d50d2433-8d65-439d-bdbe-0f5508fbef57" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}" config-ref="OrderProcessingQueue_Config">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="e317066f-42e8-491c-adc7-a005d46eb1b2" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="47aa8d07-458d-41dc-afe3-eef614aa6d42" variableName="correlation_id" />
+		<ee:transform doc:name="set input payload" doc:id="bea18d0f-c7d2-4b3f-8f3d-72ce11ae8c3c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="6381aa6f-59ed-4972-aaad-99c1a274ed4a" name="storeAgentCalling_Flow"/>
+		<set-variable value="200" doc:name="Set Order Submission Status" doc:id="a14ac90a-6585-4c3d-a4ba-7733a580c3ff" variableName="orderSubmissionStatus" />
+		<async doc:name="Async" doc:id="4ec665e3-f909-432f-a2d8-86a9a5c6a0ad">
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="12238a09-bd74-4bbf-8fdf-603e3558f634" name="DWH-Sub_Flow" />
+		</async>
+		<flow-ref doc:name="ubereats-accept-order" doc:id="a00bd65f-93a6-4d99-8f29-41d0817096c3" name="ubereats-accept-order" target="uberEatsResponse" targetValue="#[payload]"/>
+		<async doc:name="Async" doc:id="e89ade44-a829-484b-87fe-6e854ed16f3a">
+			<ee:transform doc:name="Set Hybris Status" doc:id="e289a43a-ef2a-43c6-b5f0-427b4a342a16">
+					<ee:message>
+					</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="hybrisStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.uberEatsResponse.uberOrderCancelled default false)
+	Mule::p('store.status.cancelled')
+else if(payload.info.deferred == 'NOTICE')
+	Mule::p('store.futurestatus.success')
+else
+	Mule::p('store.status.success')
+	]]></ee:set-variable>
+						</ee:variables>
+				</ee:transform>
+			<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="3755d3ab-b09f-488f-9b1d-c961e982c27c" name="Lazyupdate-Sub_Flow" />
+			</async>
+		<error-handler  name="Global_Error_Handler" ref="Global_Error_Handler"/>
+</flow>
+	<sub-flow name="call_DD_SA_API" doc:id="0300b2b9-a103-453a-b081-9fcc21703c1e" >
+		<logger level="INFO" doc:name="Log DD Call" doc:id="e52c6a2b-3b7d-4355-9284-5bbdbfeda1a4" message='#[vars.correlation_id]:: "Making DD Call"' category="com.caseys.orderrouter"/>
+		<logger level="INFO" doc:name="Log DD Payload" doc:id="cbd346f5-4858-4e3e-bf01-61d1e04ef08b" message="#[vars.correlation_id]:: Order Update Payload to DD: #[vars.ddPayload]" category="com.caseys.orderrouter.payload"/>
+		<http:request method="PATCH" doc:name="Call To Door Dash to Update Order Status" doc:id="076e76ed-24ad-4318-befa-a250c7b4dde0" config-ref="HTTP_DoorDash_Request_configuration" path="${doordash.sa.orders.update.path}" outputMimeType="application/json" target="ddResponse" sendCorrelationId="ALWAYS" correlationId="#[vars.correlation_id]">
+			<reconnect frequency="${doordash.sa.retry.frequency}" count="${doordash.sa.retry.attempts}" />
+			<http:body ><![CDATA[#[vars.ddPayload]]]></http:body>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"id" : payload.info.thirdPartyOrderNumber
+}]]]></http:uri-params>
+		
+</http:request>
+		<logger level="INFO" doc:name="Log DD System API Response" doc:id="3e267b10-84d2-4780-8d34-814d12b8cf39" message="#[vars.correlation_id] :: DD Response: #[vars.ddResponse]" category="com.caseys.orderrouter.payload"/>
+	</sub-flow>
+	<flow name="eodUpdate_orderprocessing_Flow" doc:id="c38e221e-a129-4efc-a446-78fd713723ea" >
+		<vm:listener doc:name="to EODUpdateProcessingQueue" doc:id="91fc957c-0b62-446a-963e-cbfe3f7dafdd" numberOfConsumers="${queue.noOfConsumers}" queueName="${eodupdate.queue}" timeout="${queue.timeout}" config-ref="OrderProcessingQueue_Config"/>
+		<ee:transform doc:name="Setting Payload" doc:id="cec05526-167a-43de-9ad1-78264061a903" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[payload.info.code]" doc:name="Save correlation_id" doc:id="8c22cab8-3411-4e86-a594-afbad5e0709d" variableName="correlation_id" />
+		<async doc:name="Async" doc:id="95e9a6c3-290f-4b93-a3e1-853a18b0143c" >
+			<flow-ref doc:name="dwh_service_Sub_Flow" doc:id="c469b0c3-bb99-4505-83a8-2e00510c471b" name="dwh_service_Sub_Flow" />
+		</async>
+	</flow>
+	<flow name="rePrintProcessing" doc:id="7571f1ef-7f5d-46e2-abe8-859b6ad40fc8" >
+		<vm:listener queueName="${reprint.order.queue}" doc:name="Listen To OrderProcessingRePrintQueue" doc:id="64a35f42-977d-4817-a31b-e0244b621206" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}" config-ref="OrderProcessingQueue_Config">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="ef15ce21-6afc-4965-8f79-d2e693fa1f4a" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="195325ec-18b5-47e7-a389-a08342061874" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="50dba8bf-00d2-47b8-aebf-e1ee18b33c77" variableName="cid"/>
+		<set-variable value="#[payload.flowName]" doc:name="Save flowName" doc:id="a2116ff5-138d-4a4a-88a3-a6a238d14677" variableName="flowName"/>
+		<ee:transform doc:name="set input payload" doc:id="e228135f-4b20-4b85-89a3-0fedfb5c40e0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="2848bb87-4eef-4b81-afe1-c190ecf863d4" name="storeAgentCalling_Flow"/>
+	<error-handler  name="RePrint_Error_Handler" ref="RePrint_Error_Handler"/>
+</flow>
+<flow name="DeliveryPrintProcessing" doc:id="2412e90c-0e32-42b3-a731-6df53d0b2051" >
+		<vm:listener queueName="${deliveryprint.queue}" doc:name="Listen To DeliveryPrintProcessingQueue" doc:id="41a60253-7fec-4fda-bbef-3f70fa17d515" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}" config-ref="OrderProcessingQueue_Config">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="406f9912-5ace-47c8-8423-44e626bca641" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="d162840e-95e8-4136-8b7e-f9b061725c38" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="ff325170-02cd-4faf-93cf-beddf29d5dfb" variableName="cid"/>
+		<set-variable value="#[payload.flowName]" doc:name="Save flowName" doc:id="089aff6f-591f-4803-80d2-ced4f3083b9e" variableName="flowName"/>
+		<ee:transform doc:name="set input payload" doc:id="34244da5-2318-45b6-92e2-d457e010a39a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="3ad49e0c-45a8-4a7d-828e-f5280739d2b0" name="storeAgentCalling_Flow"/>
+	<error-handler  name="DeliveryPrint_Error_Handler" ref="DeliveryPrint_Error_Handler"/>
+</flow>
+
+<flow name="eodReportProcessingFlow" doc:id="a55db96d-6bfb-4881-a3ae-0880d3f649ad" >
+		<vm:listener doc:name="Listene to EODReportProcessingQueue" doc:id="96c19520-ce20-411f-a43b-11a3cb8a3609" queueName="${eodreport.queue}" config-ref="OrderProcessingQueue_Config"/>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="eb4cecc8-85c9-42eb-aa33-83ef77862196" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="b0917ff0-a2ad-4e22-99a8-37c649b2cb76" variableName="correlation_id" />
+		<set-variable value="#[payload.cid]" doc:name="Set cid" doc:id="52ae2057-23eb-4ace-bed5-5c628d30dcfc" variableName="cid" />
+		<set-variable value="#[payload.flowName]" doc:name="Save flowName" doc:id="0c577e2e-ba78-47a4-9857-080f5d08f8e3" variableName="flowName" />
+		<ee:transform doc:name="set input payload" doc:id="a85f6267-1ab2-4b95-aedb-90d2482df10f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="bcabee5d-9df5-43b5-b21b-5ac988080988" name="storeAgentCalling_Flow" />
+	 <error-handler  name="EodReport_Error_Handler" ref="EodReport_Error_Handler"/>
+	</flow>
+	<flow name="cancelordersProcessing" doc:id="2af1d500-d972-4f7b-88b0-1c01847d9ea0" >
+		<vm:listener queueName="${cancel.order.queue}" doc:name="Listen To CancelOrderProcessingQueue" doc:id="acc3b976-7a72-4e0f-988b-734e1f5edc88" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}" config-ref="OrderProcessingQueue_Config">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="130223e5-0bbc-467d-ba53-4878e9a37401" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="6ebd8946-7a4c-4b63-8b40-1654aa5b918d" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="6427e62d-3dbe-434d-98b5-39e06e2d060a" variableName="cid"/>
+		<set-variable value="#[payload.flowName]" doc:name="Save flowName" doc:id="d228f537-4b94-42a0-bd8a-1fe059d6e3ed" variableName="flowName"/>
+		<ee:transform doc:name="set input payload" doc:id="617ef9d4-8cb1-4cee-950d-ebbdf4d01082">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="9e2c2b80-2a7f-4c15-80a6-2416de0b886d" name="storeAgentCalling_Flow"/>
+		<async doc:name="Async" doc:id="c41f9967-620f-4f67-9272-142439ddcd6d" >
+			<set-variable value="200" doc:name="Set Order Submission Status" doc:id="124edc0a-f31a-4801-b504-75964a5bc55b" variableName="orderSubmissionStatus" />
+			<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="609b2292-cf0e-4ec1-8244-5a75ad5f3344" name="sfmc_notificationsSub_Flow" />
+			
+		
+</async>
+		<async doc:name="Async" doc:id="ab9d8086-4a1a-42ce-9aa4-f674ae97151b" >
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="a664ecc1-6561-44fd-8bf0-5d4f43efb468" name="DWH-Sub_Flow" />
+		</async>
+	<error-handler  name="Cancel_Error_Handler" ref="Cancel_Error_Handler"/>
+</flow>
+	<flow name="ordersProcessing" doc:id="62fbc3dd-cc2a-4151-b234-13f621634570" >
+		<vm:listener queueName="${order.queue}" doc:name="Listen To OrderProcessingQueue" doc:id="1e4d3824-e6e6-42ea-ac18-cee23d532313" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="f0ad8559-4137-49fc-ba52-92486b00ca84" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="88beddca-861c-45d6-bd6c-7c645641eb7f" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="9d78a3e3-2def-4a45-81d7-67ce737734c0" variableName="cid"/>
+		<set-variable value="#[payload.flowName]" doc:name="Save flowName" doc:id="d226757e-0a27-41b6-8437-564acfd978c5" variableName="flowName"/>
+		<ee:transform doc:name="set input payload" doc:id="4f7ae327-85f0-405f-802e-0b9737ff3ec9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="df013062-c579-43fd-b39d-cef4b8ef09f8" name="storeAgentCalling_Flow"/>
+		<async doc:name="Async" doc:id="b2f2a9ab-4bea-4bee-a020-2fe5ab6ec602" >
+			<set-variable value="200" doc:name="Set Order Submission Status" doc:id="250feff1-d588-48ac-9ce9-cb07188472ea" variableName="orderSubmissionStatus" />
+			<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="48e11aca-1f16-4241-b8c9-88c39c4fe613" name="sfmc_notificationsSub_Flow" />
+			
+		
+</async>
+		<async doc:name="Async" doc:id="7762e724-11d3-403b-92e5-b72ce07ce9d5" >
+			<choice doc:name="Choice" doc:id="70ec1823-5d26-47be-9e07-cc36f3ff0103">
+				<when expression="#[payload.info.deferred == 'NOTICE']">
+					<set-variable value="#[p('store.futurestatus.success')]" doc:name="Set Future hybrisStatus" doc:id="fe0d9110-6b77-4341-83e6-d723c9875570" variableName="hybrisStatus" />
+				</when>
+				<otherwise>
+					<set-variable value="#[p('store.status.success')]" doc:name="Set hybrisStatus" doc:id="2349892c-53e1-42ed-8a5f-00e079d3237a" variableName="hybrisStatus" />
+				</otherwise>
+			</choice>
+			<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="2435c52c-ea6e-4c82-ad06-2d53627ca5a7" name="Lazyupdate-Sub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="456fd137-ef42-42b9-9012-8453ac5b6055" >
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="7f4a2957-8861-421c-bb06-f6769c5e0a88" name="DWH-Sub_Flow" />
+		</async>
+	<async doc:name="Async" doc:id="529071af-9a1c-40d0-8ab2-aafd65c4ce5e">
+			<flow-ref doc:name="Punch-Sub_Flow" doc:id="b98dab0f-92a7-4f77-87ef-53c35597b2da" name="Punch-Sub_Flow" />
+		</async>
+		<error-handler  name="Global_Error_Handler" ref="Global_Error_Handler"/>
+</flow>
+	<flow name="ordersProcessingwithSFSCUpdate" doc:id="bd43fd49-a44c-4a7a-967b-5a1b1e8bd442" >
+		<vm:listener queueName="${order.sfscupdate.queue}" doc:name="Listen To OrderProcessingSFSCUpdateQueue" doc:id="9ecb6d08-81a5-41e2-b616-0d01e4b9ab97" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}" config-ref="OrderProcessingQueue_Config">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="d4ade6e6-ead3-444f-a496-4ee8a84cd890" variableName="ip" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="b3dd305f-e0f2-4c74-95fd-1dff59c59809" variableName="correlation_id" />
+		<set-variable value='#[payload.cid]' doc:name="Set cid" doc:id="77ed6523-b4b3-49da-9aac-1e40cd14ae81" variableName="cid"/>
+		<ee:transform doc:name="set input payload" doc:id="2dfc174c-5d20-48d0-bc61-88bf1ea47c5d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="7004c692-1060-4aae-9f10-7e0eb26d6c8d" name="storeAgentCalling_Flow"/>
+		<async doc:name="Async" doc:id="96fcdc15-a17b-4a84-af4d-84de38e8e384" >
+			<set-variable value="200" doc:name="Set Order Submission Status" doc:id="250feff1-d588-48ac-9ce9-cb07188472ea" variableName="orderSubmissionStatus" />
+			<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="48e11aca-1f16-4241-b8c9-88c39c4fe613" name="sfmc_notificationsSub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="d02ab1c8-e373-43d0-8fbd-113f7a5a1e8c" >
+			<flow-ref doc:name="Punch-Sub_Flow" doc:id="39a20eb4-720e-4ab6-bd35-5cc667e03904" name="Punch-Sub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="6fe81c4b-8c22-4711-b3b7-09c64f88853e" >
+	
+			<choice doc:name="Choice" doc:id="a3872812-5ff1-4e04-98af-49f1c1688b97" >
+				<when expression="#[payload.info.deferred == 'NOTICE']">
+					<set-variable value="#[p('store.futurestatus.success')]" doc:name="Set Future hybrisStatus" doc:id="dd10f6dd-40b8-4932-aa0d-56b2622aa880" variableName="hybrisStatus" />
+				</when>
+				<otherwise >
+					<set-variable value="#[p('store.status.success')]" doc:name="Set hybrisStatus" doc:id="dc1e9c4c-06d2-4d24-a189-d7fced2769dc" variableName="hybrisStatus" />
+				</otherwise>
+			</choice>
+			<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="9f2df357-cf91-47e0-bbfc-91cfaca3ef55" name="Lazyupdate-Sub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="41f74bbb-b5ab-4b4b-9150-aebf3e80da5c" >
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="7f3ab544-715d-4a4e-8a67-9487299ee903" name="DWH-Sub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="c46aa366-3086-4337-900e-07e4316aea4f" >
+			<flow-ref doc:name="sfscUpdateSub_Flow" doc:id="9f42f4cb-c527-4304-9674-2b8421c38798" name="sfscUpdateSub_Flow" />
+		</async>
+	<error-handler doc:name="UpdateFlow_Error_Handler" ref="UpdateFlow_Error_Handler" doc:description="UpdateFlow_Error_Handler"/>
+</flow>
+	<flow name="ordersProcessingwithSFSCCreate" doc:id="42a35676-a423-41ac-9b4c-ca7982caf38e" >
+		<vm:listener queueName="${order.sfsccreate.queue}" doc:name="Listen To OrderProcessingSFSCCreateQueue" doc:id="6d2f5a70-11e9-4ffb-98cd-6f8340927dbc" timeout="${queue.timeout}" numberOfConsumers="${queue.noOfConsumers}" config-ref="OrderProcessingQueue_Config">
+		</vm:listener>
+		<set-variable value="#[payload.ip]" doc:name="Save IP" doc:id="d0b318d6-ba54-4106-9c38-0eade054a196" variableName="ip" />
+		<set-variable value="#[payload.orderPayload]" doc:name="Save Input Payload" doc:id="08aa834d-7217-4ec8-b103-df195f6edbbf" variableName="ipPld" mimeType="application/json" />
+		<set-variable value="#[payload.orderPayload.info.code]" doc:name="Save correlation_id" doc:id="f7cef377-e58a-46ec-b7b3-41c85deb7c3a" variableName="correlation_id" />
+		<ee:transform doc:name="set input payload" doc:id="d1e5d76d-05ff-47b1-ace2-629c8909bf57">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.orderPayload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<try doc:name="Try" doc:id="a512b25d-54b7-473c-9c7d-5a799bbfe452">
+			<flow-ref doc:name="sfscSub_Flow" doc:id="73c0ecf6-7d23-4ef1-9e5d-9c8e41262d63" name="sfscSub_Flow" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2ae831e7-5737-4ae4-9234-1609b365762f" type="ANY" >
+					<logger level="INFO" doc:name="Logger" doc:id="bd00776c-602e-4604-8956-6b523fde9f37" message='#[output application/java --- vars.correlation_id  as String ++ "  :: " ++ if(isEmpty(error.description)) "SFSC create customer call Failed" else error.description as String]' category="com.caseys.orderrouter"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="setting Payload with CID" doc:id="745e7758-d8ca-452d-a5fc-68b2ad7233c1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.ipPld  - "contactInfo" ++ (contactInfo: vars.ipPld.contactInfo  ++ {customerMasterNumber: vars.cid default ""}) ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="storeAgentCalling_Flow" doc:id="386839e5-0245-4ebd-bbd3-4cd1d25cd7df" name="storeAgentCalling_Flow"/>
+		<async doc:name="Async" doc:id="b39aa3e7-85ba-4b82-bcd9-76469969f522" >
+			<set-variable value="200" doc:name="Set Order Submission Status" doc:id="e041e9e0-c3f9-4b3b-840a-9f22aaafd75c" variableName="orderSubmissionStatus" />
+			<flow-ref doc:name="sfmc_notificationsSub_Flow" doc:id="9b9cde28-0d78-414c-a3c2-2aab82cf6680" name="sfmc_notificationsSub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="3db1bdef-17f9-4803-b4df-bb3a1034c68c" >
+			<flow-ref doc:name="Punch-Sub_Flow" doc:id="14b09fbc-84d0-46d5-a7bb-0a7cc509c4a1" name="Punch-Sub_Flow" />
+		</async>
+		<async doc:name="Async" doc:id="b456010b-80be-411a-b567-610f2888aa83" >
+	
+			<choice doc:name="Choice" doc:id="f3e4ed4b-4dfa-4b81-aacb-89159cc97d30" >
+				<when expression="#[payload.info.deferred == 'NOTICE']">
+					<set-variable value="#[p('store.futurestatus.success')]" doc:name="Set Future hybrisStatus" doc:id="1a7d8e00-723d-4222-b238-91fc18977fbd" variableName="hybrisStatus" />
+				</when>
+				<otherwise >
+					<set-variable value="#[p('store.status.success')]" doc:name="Set hybrisStatus" doc:id="00c464f5-088f-417a-8141-ba44d3a71646" variableName="hybrisStatus" />
+				</otherwise>
+			</choice>
+			<flow-ref doc:name="Lazyupdate-Sub_Flow" doc:id="a11223c1-b156-419c-a44f-aef7a7470d7b" name="Lazyupdate-Sub_Flow" />
+			
+		</async>
+		<async doc:name="Async" doc:id="423579f4-bf1c-4013-8698-d57fad00a1fa" >
+			<flow-ref doc:name="DWH-Sub_Flow" doc:id="a84594d9-7cb7-4297-89c4-0f834829e70a" name="DWH-Sub_Flow" />
+			
+		</async>
+	
+<error-handler  name="Global_Error_Handler" ref="Global_Error_Handler"/>
+</flow>
+	
+	<sub-flow name="sfmc_notificationsSub_Flow" doc:id="5988a4a1-d04f-4223-93f7-85137086e0f3" >
+		<!-- <set-variable value="${not.client_id}" doc:name="Save notclient_id" doc:id="77f3ec69-2392-464e-b216-2edb64bcde19" variableName="notclient_id"/>
+		<set-variable value="${not.client_secret}" doc:name="Save notclient_secret" doc:id="4409b834-e022-4e9b-8217-225976e74fc5" variableName="notclient_secret"/>
+		 -->
+		<logger level="DEBUG" doc:name="Log SFMC subFlow Call" doc:id="107955a0-ca80-4637-912e-bf95c7f8f6db" message='#[vars.correlation_id]:: "In SFMC Sub Flow"' category="com.caseys.orderrouter"/>
+		<set-variable value='#[payload.contactInfo.emailId default ""]' doc:name="Save toAddress" doc:id="d94164b6-54b0-4653-a2a6-cbd07862cbfd" variableName="toAddress" />
+		<choice doc:name="Choice" doc:id="156c3411-30f5-46e4-a510-a5ee2b348a1e" >
+			<when expression="#[vars.cid =='' or vars.toAddress ==''  or (upper(payload.info.status) == p('sfmc.edit.order.cancel.status') and (not isEmpty(payload.info.editReferenceOrderId)))]" >
+				<logger level="INFO" doc:name="Log Message" doc:id="a6f227d5-e76d-4e22-b698-08e33da54ca7" message="#[vars.correlation_id]::SFMC Call not possible without CID or ToAddress or With Channel OMS" category="com.caseys.orderrouter"/>
+
+			</when>
+			<otherwise >
+					 <choice doc:name="Choice" doc:id="466e1d13-02f3-4e00-bdf6-caa2ea160e19">
+		<when expression="#[(vars.orderSubmissionStatus == &quot;200&quot;) or (payload.info.deferred == 'MAKE' and payload.info.status == 'SUBMITTED_TO_STORE_FUTURE')]" >
+						<choice doc:name="Choice" doc:id="57b51825-5349-4f1a-bd6e-00a93b93bca2" >
+							<when expression="#[payload.info.deferred == 'MAKE' and payload.info.status == 'SUBMITTED_TO_STORE_FUTURE']">
+								<logger level="INFO" doc:name="Log future order make request entry" doc:id="7f200b37-79e2-4e42-a099-aafd9d9a4b31" message="#[vars.correlation_id] :: Future Order MAKE reuqest , hence the remainder notification email will be sent" category="com.caseys.orderrouter"/>
+								<ee:transform doc:name="Reminder mail" doc:id="c8d1b815-5af7-4834-a565-449c6fcec734" >
+									<ee:message >
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ (orderProcessed: p('sfmc.order.reminder'))]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</when>
+							<otherwise >
+								<ee:transform doc:name="Success mail" doc:id="6b926092-175b-4c1a-8511-758076a16f65">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ (orderProcessed: p('sfmc.order.success'))]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+							</otherwise>
+						</choice>
+				</when>
+				<otherwise>
+						<ee:transform doc:name="Failure mail" doc:id="4ec6df81-0704-4fd6-b297-242d3f75f80b" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ (orderProcessed: p('sfmc.order.failure'))]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+				 <!-- choice doc:name="Choice" doc:id="49c22d16-9e1c-4185-a52d-51395e2a2728">
+		<when expression='#[vars.orderSubmissionStatus == "200"]'>
+				<ee:transform doc:name="Email Input" doc:id="184a877a-d36d-4b18-93ff-70846e1fe91b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+{
+	'orderNumber': payload.info.code default "",
+	'OrderDate&Time': payload.info.created default null,
+	'OrderPromisedDate&Time': payload.info.propmised default null,
+	'OrderDetails': payload.entries default [],
+	'PaymentMethod': payload.payment.paymentMethod default "",
+	'toEmailAddress': payload.contactInfo.emailId default "",
+	'storeAddress': payload.store.address default {},
+	'StorePhoneNumber': payload.store.phoneNumber default "",
+	'OrderProcessed': true
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+		<otherwise>
+				<ee:transform doc:name="Email Input" doc:id="70d70c70-8954-42f2-9b3d-75feef1fa289">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+{
+	'orderNumber': payload.info.code default "",
+	'OrderDate&Time': payload.info.created default null,
+	'OrderDetails': payload.entries default [],
+	'PaymentMethod': payload.payment.paymentMethod default "",
+	'toEmailAddress': payload.contactInfo.emailId default "",
+	'storeAddress': payload.store.address default {},
+	'StorePhoneNumber': payload.store.phoneNumber default "",
+	'OrderProcessed': false
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>  -->
+				<set-variable value="#[payload.orderProcessed]" doc:name="Save processFlag" doc:id="d5f7cffd-da7d-4947-8553-fa59f43bbb08" variableName="processFlag"/>
+				<ee:transform doc:name="Request Transform" doc:id="1e75601d-81a1-4a3b-b86c-622c8ed532fa">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    
+    "recipient": {
+        "to": vars.toAddress default "",
+        "contactKey": vars.cid default "",
+        "attributes": {
+            
+                "RequestPayload": write(payload,"application/json") replace "\n" with ""
+
+        }
+    },
+    "Options": {
+        "RequestType": p('sfmc.requestType')
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<logger level="INFO" doc:name="Log Notification Request" doc:id="6f360559-1504-4ce2-838f-d9e292235951" message="#[vars.correlation_id] :Process Flag Value:#[vars.processFlag]" category="com.caseys.orderrouter"/>
+				<http:request method="POST" doc:name="Notification Call" doc:id="d47353ba-b952-4bd8-811c-e137006d7123" config-ref="SFMC_Notification_Request_configuration" path="${sfmc.notification.path}">
+					<reconnect frequency="${sfmc.freq}" count="${sfmc.attempts}" />
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/json",
+	"client_id" : "${sfmc.notification.client_id}",
+	"client_secret" : "${sfmc.notification.client_secret}"
+}]]]></http:headers>
+			</http:request>
+				<logger level="INFO" doc:name="Log Notification Response" doc:id="5230ad45-49ee-4553-9532-c13e55c9adf0" message="#[vars.correlation_id] :Notification Response:#[payload]" category="com.caseys.orderrouter.payload"/>
+			
+</otherwise>
+		</choice>
+	</sub-flow> 
+	<sub-flow name="sfscSub_Flow" doc:id="596eba6f-2bd4-431a-a631-4e2641059c0c" >
+		<!-- <set-variable value="${sfsc.clientID}" doc:name="Save client_id" doc:id="5d15b317-4c92-4ba0-bea1-2d82ceef5d1b" variableName="client_id"/>
+		<set-variable value="${sfsc.clientSecret}" doc:name="Save client_secret" doc:id="110685a6-bc9b-4872-b24d-ed813eca4635" variableName="client_secret"/>
+		 -->
+		<choice doc:name="Choice" doc:id="a0f02953-3120-4d5f-ab72-d2daa756660b" >
+			<when expression="#[payload.contactInfo.registeredUser]">
+				<logger level="INFO" doc:name="Logging isRegistered User" doc:id="64c3ff26-30a2-4c8c-8b77-630479e32615" message="#[vars.correlation_id] :: Is RegisteredUser : #[payload.contactInfo.registeredUser] Customer Registration Call." category="com.caseys.orderrouter"/>
+				<ee:transform doc:name="Request Transform" doc:id="7cae178e-d96c-4e99-be30-9aefae0760cd">
+			<ee:message>
+						<ee:set-payload resource="dwl/salesforce_create.dwl" />
+			</ee:message>
+		</ee:transform>
+				<http:request method="POST" doc:name="Customer Registration Call" doc:id="b2f901d5-f6b7-47ee-823e-63f128618526" config-ref="HTTP_Customer_Registration_configuration" path="${customer.registration.path}">
+					<non-repeatable-stream />
+					<reconnect frequency="${customer.freq}" count="${customer.attempts}" />
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/json",
+	"client_id" : "${customer.clientID}",
+	"client_secret" : "${customer.clientSecret}"
+}]]]></http:headers>
+				</http:request>
+							</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logging isRegistered User" doc:id="8c802e37-6bd4-4ed4-b6b0-2b9b7cdc20e4" message="#[vars.correlation_id] :: Is RegisteredUser : #[payload.contactInfo.registeredUser] Customer Creation Call." category="com.caseys.orderrouter"/>
+				<ee:transform doc:name="Request Transform" doc:id="e0dd4b21-4659-4c06-aa66-9584c50f63ef">
+					<ee:message>
+						<ee:set-payload resource="dwl/salesforce_create.dwl" />
+					</ee:message>
+				</ee:transform>
+				<http:request method="POST" doc:name="SFSC Customer Creation Call" doc:id="3abb76f7-df96-49c7-a518-f84ad1613719" config-ref="Customer_Request_configuration" path="${sfsc.path}">
+			<non-repeatable-stream />
+			<reconnect frequency="${sfsc.freq}" count="${sfsc.attempts}" />
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/json",
+	"client_id" : "${sfsc.clientID}",
+	"client_secret" : "${sfsc.clientSecret}"
+}]]]></http:headers>
+		</http:request>
+			</otherwise>
+		</choice>
+	<ee:transform doc:name="Save cid" doc:id="0e2c361a-66ca-4e65-a69c-f0f43eba11ab" >
+			<ee:variables >
+				<ee:set-variable variableName="cid" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.cid default ""]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log SFSC Response" doc:id="1221fa5c-e77e-4a77-8a08-12bb374c73c3" message='#[vars.correlation_id], CID : #[vars.cid]' category="com.caseys.orderrouter"/>
+	
+</sub-flow>
+	<sub-flow name="sfscUpdateSub_Flow" doc:id="4606b837-9111-4342-83cf-865f299506c1" >
+		<!-- <set-variable value="${sfsc.clientID}" doc:name="Save client_id" doc:id="b24fae44-5f5c-422a-994e-aa4e6cf74eb6" variableName="client_id"/>
+		<set-variable value="${sfsc.clientSecret}" doc:name="Save client_secret" doc:id="0ea29cdf-9c35-4973-b4c0-e4cb31492cad" variableName="client_secret"/>
+	 -->
+		<choice doc:name="Choice" doc:id="ad7f8fbf-2848-48f3-954e-abb7569c7aac" >
+			<when expression="#[payload.contactInfo.emailOptIn == false and payload.contactInfo.smsOptIn == false]">
+				<logger level="INFO" doc:name="Log No Optins" doc:id="65463b68-9ca4-49e1-9895-25fb32b2a0ba" message="#[vars.correlation_id], No OptIns In order!!" category="com.caseys.orderrouter"/>
+				<ee:transform doc:name="ORDER_Date Update" doc:id="47dbb41a-c6f0-4656-92ca-4aebf6aa11ef" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+input payload application/json
+
+---
+{
+  
+  "orderData": {
+  	 "orderChannel"  : payload.info.channel default "",
+  	 "orderDateTime" : payload.info.created  as String default ""
+  },
+ "operationType" : p('sfsc.update.operationType')
+  
+  }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="ORDER_Date with subscriptions Update" doc:id="9ffc5d36-c3d3-4130-b0d1-9423306b18ea">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+input payload application/json
+fun sourceguestresolver(payload) = (if(payload.info.channel == "${channel.mobile}") "${source.mobile}" else (if(payload.info.channel == "${channel.oms}") "${source.oms}" else "${source.web}"))
+fun sourceregisteredresolver(payload) = (if(payload.info.channel == "${channel.mobile}") "${customer.mobile}" else (if(payload.info.channel == "${channel.oms}") "${customer.oms}" else "${customer.web}"))
+
+---
+{
+  "subscriptions": flatten ([
+    if(payload.contactInfo.emailOptIn == true) ({
+      "name": "${emailOptIn.subscription}",
+      "isSubscribed": true,
+      "source": if(vars.cid == "" or vars.cid == null) sourceguestresolver(payload) else sourceregisteredresolver(payload)
+    }) else [],
+    if(payload.contactInfo.smsOptIn == true) ({
+      "name": "${smsOptIn.subscription}",
+      "isSubscribed": true,
+      "source": if(vars.cid == "" or vars.cid == null) sourceguestresolver(payload) else sourceregisteredresolver(payload)
+    }) else [] 
+  ]),
+  "orderData": {
+  	 "orderChannel"  : payload.info.channel default "",
+  	 "orderDateTime" : payload.info.created  as String default ""
+  },
+ "operationType" : p('sfsc.update.operationType')
+  
+  }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+		<http:request method="PUT" doc:name="SFSC Update Call" doc:id="76e7260d-e45a-47fe-8820-614be2020f19" config-ref="Customer_Request_configuration" path="${sfsc.path}/{cid}">
+			<non-repeatable-stream />
+					<reconnect frequency="${sfsc.freq}" count="${sfsc.attempts}" />
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/json",
+	"client_id" : "${sfsc.clientID}",
+	"client_secret" : "${sfsc.clientSecret}"
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"cid" : vars.cid default ""
+}]]]></http:uri-params>
+		
+</http:request>
+		<logger level="INFO" doc:name="Log SFSC Response" doc:id="f8da1364-3f63-40b7-975c-866b30d93af4" message='#[vars.correlation_id], CID : #[vars.cid], SFSC Order Date Response : #[payload.orderData]' category="com.caseys.orderrouter.payload"/>
+		</sub-flow>
+	<sub-flow name="storeAgentCalling_Flow" doc:id="410f4916-df80-4971-b348-ce7ccb3efb70" >
+		<logger level="INFO" doc:name="Log IP" doc:id="55dc1ec1-e950-4f98-b981-49141aea2735" message="#[vars.correlation_id] :: Input IP::#[vars.'ip' default null]" category="com.caseys.orderrouter"/>
+		<try doc:name="Try" doc:id="f8c6959a-3f59-4d4f-aa37-abf021bcd56f">
+			<http:request method="POST" doc:name="Call Store Agent API HTTPS" doc:id="c125e05d-6118-4dad-ac8a-f54a2d509855" outputMimeType="application/json" url="#[%dw 2.0
+output application/json
+---
+'${store.initialurl}' ++ write(vars.ip default null,&quot;application/java&quot;) ++ &quot;/&quot; ++ '${store.path}']" config-ref="HTTP_Request_configuration_HTTPS" target="storeAgentResponse">
+			<non-repeatable-stream />
+		</http:request>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6a35ab2f-4679-4991-9004-e500294392b6" type="${store.retry.errortype}">
+					<logger level="INFO" doc:name="Log Retry Call" doc:id="259dea3d-2ba2-4b79-b89a-4332fff95f7e" message="#[vars.correlation_id] :: #[error.description]" category="com.caseys.orderrouter"/>
+					<until-successful maxRetries="${store.attempts}" doc:name="Until Successful" doc:id="98e60076-c81f-4efc-bfc5-0b6f5dcc1a79" millisBetweenRetries="${store.freq}">
+						<http:request method="POST" doc:name="Call Store Agent API HTTPS" doc:id="7f240d5b-b6e3-41a2-8cd4-c06be87b5165" config-ref="HTTP_Request_configuration_HTTPS" url="#[%dw 2.0
+output application/json
+---
+'${store.initialurl}' ++ write(vars.ip default null,&quot;application/java&quot;) ++ &quot;/&quot; ++ '${store.path}']" outputMimeType="application/json" target="storeAgentResponse">
+							<non-repeatable-stream />
+						</http:request>
+					</until-successful>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Log StoreAgent Response" doc:id="070076dc-879c-4c69-aacd-a718da2673fa" message="#[vars.correlation_id] :Store Agent Response:#[vars.storeAgentResponse]" category="com.caseys.orderrouter.payload"/>
+	</sub-flow>
+	<sub-flow name="Lazyupdate-Sub_Flow" doc:id="73476b32-a876-44d8-8d38-0aa7f7321c9d" >
+		<logger level="DEBUG" doc:name="Log LazyUpdate_SubFlow" doc:id="76a09875-e175-4493-943a-b8aff2d9cc61" message='#[vars.correlation_id]:: "In LazyUpdate Sub Flow"' category="com.caseys.orderrouter"/>
+		<choice doc:name="Check Cancellation for Third Party Order" doc:id="9216f43f-e31c-497c-8a79-3732d705ebd5" >
+			<when expression="#[(not isEmpty(payload.info.thirdPartyDeliveryPartner)) and ((upper(payload.info.thirdPartyDeliveryPartner) == p('doordash.check'))
+  or (upper(payload.info.thirdPartyDeliveryPartner) == p('ubereats.check'))) and (vars.hybrisStatus == p('store.status.cancelled'))]" >
+				<ee:transform doc:name="Lazy Status Payload for third party order cancellation" doc:id="1f164954-8006-4a0b-895f-4a78d180025e" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="lazyUpdatePayload" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+"cancelReason": p('doordash.orders.cancel.reason'),
+"status":vars.hybrisStatus default "",
+"isThirdpartyOrder":true
+} ]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<set-variable value="#[payload.info.thirdPartyOrderNumber]" doc:name="Set OrderId uri paramter" doc:id="93298341-7836-4da2-b819-4c67d10252c7" variableName="orderId" />
+			</when>
+			<when expression="#[vars.createdeliveryResponse.cancelOrderFlag default false]">
+				<ee:transform doc:name="DD Drive Order Cancellation Payload" doc:id="a76e7a41-1a7c-49df-962b-178ab4e57777" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="lazyUpdatePayload" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.createdeliveryResponse.hybrisStatus default "",
+  "cancelReason": p('dd.drive.order.cancellation.message'),
+  "customerMasterNumber": vars.cid default "",
+  "cancelledBy" : p('dd.drive.cancelledBy')
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<set-variable value="#[payload.info.code]" doc:name="Set OrderId" doc:id="33936c0e-246d-40f9-85f7-fe61cff8a3df" variableName="orderId"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Lazy Status Payload" doc:id="def80db0-8afa-4e3a-bf87-781796b8fd88">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="lazyUpdatePayload"><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.hybrisStatus default "",
+  "customerMasterNumber": vars.cid default "",
+  ("thirdPartyQuotedDeliveryTime" : (vars.createdeliveryResponse.quoted_delivery_time as DateTime  >> (payload.info.created as DateTime {format : "yyyy-MM-dd'T'HH:mm:ssxx"}  as DateTime {format : "xx"}))as String {format : "yyyy-MM-dd'T'HH:mm:ssxx"}) if(vars.createdeliveryResponse.quoted_delivery_time?),
+  ("thirdPartyDeliveryId": vars.createdeliveryResponse.id default "")if(vars.createdeliveryResponse.id?),
+  ("thirdPartyDeliveryTrackingURL" : vars.createdeliveryResponse.delivery_tracking_url default "") if(vars.createdeliveryResponse.delivery_tracking_url?)
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<set-variable value='#[payload.info.code]' doc:name="Set OrderId uri paramter" doc:id="c6cf2dde-dbb2-4a41-bf7c-ef9e19032fdb" variableName="orderId"/>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Log Lazy Update Request" doc:id="cc8393fc-5f2c-41a8-8d56-f1a4b0a4965f" message="#[vars.correlation_id]::Lazy Update Request::#[vars.lazyUpdatePayload]" category="com.caseys.orderrouter.payload"/>
+		<until-successful maxRetries="${lazyupdate.max.retries}" doc:name="Until Successful" doc:id="c8ee6d31-19cc-4fed-882e-a75cfaca276c" millisBetweenRetries="${lazyupdate.retry.interval}">
+		<http:request method="POST" doc:name="Orders Update" doc:id="dec8c192-0c7a-4139-99cf-4dd507cb3622" config-ref="HTTP_Hybris_Request_configuration" path="${lazy.https.path1}/{orderId}/${lazy.https.path2}" outputMimeType="application/json">
+			<non-repeatable-stream />
+			<http:body><![CDATA[#[vars.lazyUpdatePayload]]]></http:body>
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/json",
+	"client_id" : "${lazy.client_id}",
+	"client_secret" : "${lazy.client_secret}"
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orderId" : vars.orderId default ""
+}]]]></http:uri-params>
+		</http:request>
+		</until-successful>
+		<logger level="INFO" doc:name="Log LazyUpdate Response" doc:id="683f4c16-e260-4cf1-8806-ec96905ed52f" message='#[vars.correlation_id]::"Lazy Update Response::" #[payload]' category="com.caseys.orderrouter.payload"/>
+	</sub-flow>
+	<sub-flow name="Punch-Sub_Flow" doc:id="4d6d7e2e-29cc-4a23-b5b8-18fad0da386b">
+		<logger level="DEBUG" doc:name="Log PunchSubFLow_Call" doc:id="1605a2d6-c2e4-41e9-8f2d-6ee4eebe9e76" message='#[vars.correlation_id]:: "In Punchh Sub FLow"' category="com.caseys.orderrouter"/>
+		<choice doc:name="Choice" doc:id="fadeb967-371c-41c5-b365-b7e77b257f2e" >
+			<when expression="#[(((payload.payment.paymentType contains p('paymenttype.prepaid')) or ((payload.payment.paymentType contains p('paymenttype.postpaid'))) and (lower(payload.info.occasion) == p('occasiontype.delivery'))) and (payload.contactInfo.isGuestCheckout == false))]">
+				<set-variable value="#[payload.contactInfo.customerMasterNumber]" doc:name="Set CustomerMasterNumber" doc:id="fb9c64c8-fe2a-4339-b286-13baa9dbd80c" variableName="customerMasterNumber"/>
+				<ee:transform doc:name="Punch Payload" doc:id="65a5b334-d2c2-4514-8251-d0432ff6e5bc">
+					<ee:message>
+						<ee:set-payload resource="dwl/punchh_product_checkin_req.dwl" />
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Log Punch Request" doc:id="12b67375-ecb3-4714-a472-87eddb0d6e83" message="#[vars.correlation_id]:: Token :: #[vars.customerMasterNumber] :: Punch Request::#[payload]" category="com.caseys.orderrouter.payload"/>
+	<http:request method="POST" doc:name="Punchh Update" doc:id="80068393-ff10-42e5-a9cb-6b850c1dd626" config-ref="HTTP_Punchh_Request_configuration" path="${punchh.https.path}" outputMimeType="application/json">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_id" : "${punchh.client_id}",
+	"client_secret" : "${punchh.client_secret}",
+	"Content-Type" : "application/json",
+	"token" : vars.customerMasterNumber
+}]]]></http:headers>
+		</http:request>
+				<logger level="INFO" doc:name="Punch Response" doc:id="f458f01a-3fe9-4a1c-90a6-9195c2e9733f" message='#[vars.correlation_id]::"Punch Response::" #[payload]' category="com.caseys.orderrouter.payload"/>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Log No Punchh Call" doc:id="a225e164-5bb9-4db8-8502-e92bddb33990" message='#[vars.correlation_id]::"No Punchh Call"' category="com.caseys.orderrouter"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="DWH-Sub_Flow" doc:id="03ab245c-24b0-4435-80fd-05f28ea75613" >
+		<!-- <set-variable value="${datawarehouse.client_id}" doc:name="Save client_id" doc:id="6da73479-978d-4a9e-83ba-7aafc0fb09fa" variableName="client_id" />
+		<set-variable value="${datawarehouse.client_secret}" doc:name="Save client_secret" doc:id="176e1248-72b9-47d4-8f73-6b4fff923ae5" variableName="client_secret" />
+		 -->
+		<logger level="DEBUG" doc:name="Log DWH subFlow call" doc:id="7ba39bf3-be34-4e7c-9287-56ecdbe2b221" message='#[vars.correlation_id]:: "In DWH Sub Flow"' category="com.caseys.orderrouter"/>
+		<choice doc:name="Choice" doc:id="0237498d-a130-4326-b15e-b51781164adb" >
+			<when expression="#[payload.info.deferred == 'MAKE' and payload.info.status == 'SUBMITTED_TO_STORE_FUTURE']">
+				<logger level="INFO" doc:name="Log No DWH Call" doc:id="c34ce1a6-b344-4609-b5ac-10eaebeb24d1" message='#[vars.correlation_id]::"DWH call skipped"]' category="com.caseys.orderrouter"/>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="dwh_service_Sub_Flow" doc:id="0a98da5f-c4d0-4782-ada1-85ae8524a170" name="dwh_service_Sub_Flow"/>
+
+			</otherwise>
+		
+</choice>
+	</sub-flow>
+	<sub-flow name="dwh_service_Sub_Flow" doc:id="99e9c5b3-dbec-4fdd-853e-4a64e4e92529" >
+		<logger level="DEBUG" doc:name="Log DWH Call" doc:id="b11d9d7e-bf98-4c18-ae25-e3fa6d06570e" message='#[vars.correlation_id]:: "Making DWH Call"' category="com.caseys.orderrouter"/>
+		<until-successful maxRetries="${dwh.max-retry}" doc:name="Until Successful" doc:id="d1f841d8-6683-49e9-8f45-ff1324367d81" millisBetweenRetries="${dwh.retry.frequency}">
+			<try doc:name="Try" doc:id="bc3283b5-bec0-4e60-9765-c24e218b9495" >
+				<http:request method="POST" doc:name="Update Datawarehouse" doc:id="5934a3e4-6190-455a-86df-34d5fced4108" config-ref="HTTP_DataWarehouse-Request_configuration" path="${https.datawarehouse.path}" outputMimeType="application/json">
+			<non-repeatable-stream />
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/json",
+	"client_id" : "${datawarehouse.client_id}",
+	"client_secret" : "${datawarehouse.client_secret}"
+}]]]></http:headers>
+		</http:request>
+				<logger level="INFO" doc:name="Log DataWarehouse Response" doc:id="a0f21529-6a5f-4a51-921c-4deb81462208" message='#[vars.correlation_id]::"DataWarehouse Response::" #[payload]' category="com.caseys.orderrouter.payload"/>
+				<error-handler >
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="ff18b142-d467-441e-9782-840845a1b726" type="${dwh.retry.errortype}">
+						<logger level="INFO" doc:name="Log DWH Retry call" doc:id="2002010e-b9e6-4486-820d-f24084e0e06a" message="#[vars.correlation_id]:: Retrying DWH Call after failure" category="com.caseys.orderrouter"/>
+					</on-error-propagate>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b42de4ab-9fd2-45b4-a198-0fd15c3bc5bc" type="ANY">
+						<logger level="INFO" doc:name="Log DWH error" doc:id="71ddb53c-5f4d-45ab-b8b4-eb537979a7f5" message="#[vars.correlation_id]:: DWH Call Failed.  Error Details: #[error.muleMessage.typedValue default error.description]" category="com.caseys.orderrouter"/>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</until-successful>
+	</sub-flow>
+	
+
+</mule>

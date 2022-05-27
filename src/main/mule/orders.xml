@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd">
+	
+	
+	<flow name="post:\orders\(requestType):order-config">
+		<ee:transform doc:name="Map to JSON" doc:id="d5665049-ee33-468a-9336-c5ef64323ddb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Generate and Save correlation_id" doc:id="69e18843-0835-4dd2-a0f1-9322c5682d86">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="correlation_id"><![CDATA[%dw 2.0
+output application/json
+---
+payload.info.code default ""]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<logger level="INFO" doc:name="Log Correlation_id" doc:id="7f70a4e9-2b5b-44ed-9d3b-11f9f9cabdcd" message="#[vars.correlation_id]" category="com.caseys.orderrouter"/>
+			<flow-ref doc:name="ordersFlow" doc:id="20f71c80-1721-4d4f-b804-012d34c3bc01" name="ordersFlow" />
+		
+		
+
+    </flow>
+	<flow name="ordersFlow" doc:id="4bbc6e67-a7c3-4ea2-b699-9fe5b2d2ed15">
+		 <ee:transform doc:name="Transform to Json" doc:id="2c1f1977-cfaf-4793-9135-d9a5478d76d1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Input Payload" doc:id="32797b72-a10f-4b84-8396-44ef979cbdd0" message="#[vars.correlation_id]::Input Payload::#[payload]" category="com.caseys.orderrouter.payload"/>
+		<choice doc:name="Choice" doc:id="d3a8a0e9-6490-46f6-92a0-a242c8fc67cc">
+        <when expression="#[(attributes.uriParams.requestType == '${order-reprint}') or (attributes.uriParams.requestType == '${order-curbside-pickup}')]">
+			<logger level="INFO" doc:name="Log Reprint/CurbsidePickup" message='#[output application/java --- vars.correlation_id  as String ++ " Log :: " ++ attributes.uriParams.requestType as String]' category="com.caseys.orderrouter"></logger>
+				<flow-ref doc:name="reprintordersFlow" doc:id="ae144f6f-d70f-4194-ae3a-a50032e6ea1c" name="reprintordersFlow" />
+
+</when>
+    <when expression="#[attributes.uriParams.requestType == '${order-delivery-print}']">
+			<logger level="INFO" doc:name="Log Delivery Print" message='#[output application/java --- vars.correlation_id  as String ++ " Log :: " ++ attributes.uriParams.requestType as String]' category="com.caseys.orderrouter"></logger>
+				<flow-ref doc:name="deliveryprintFlow" doc:id="6a0d7966-f376-4dbb-a444-1e8e8706a5be" name="deliveryprintFlow" />
+
+</when>
+<when expression="#[attributes.uriParams.requestType == '${order-cancel}' and (attributes.headers.thirdPartyDeliveryPartner == &quot;${dd.drive.delivery}&quot;)]" >
+			<logger level="INFO" doc:name="Log Cancel" message='#[output application/java --- vars.correlation_id  as String ++ " Log :: DD Drive Order " ++ attributes.uriParams.requestType as String]' doc:id="b641e551-2cec-476a-92a6-d72fd46b26f1" category="com.caseys.orderrouter"></logger>
+				<flow-ref doc:name="canceldddriveorderFlow" doc:id="92acf35b-a998-4a2f-aa5f-efce9ff08d50" name="canceldddriveorderFlow" />
+
+</when>
+ <when expression="#[attributes.uriParams.requestType == '${order-cancel}']">
+			<logger level="INFO" doc:name="Log Cancel" message='#[output application/java --- vars.correlation_id  as String ++ " Log :: " ++ attributes.uriParams.requestType as String]' category="com.caseys.orderrouter"></logger>
+				<flow-ref doc:name="cancelordersFlow" doc:id="82f3765b-419a-416f-9793-93dcb1f94d77" name="cancelordersFlow" />
+
+</when>
+			<when expression="#[attributes.uriParams.requestType == '${order-eodreport}']">
+				<logger level="INFO" doc:name="Log Eod Report" doc:id="997882b1-dd57-40e6-a4b3-35e8004e95b6" message='#[output application/java --- vars.correlation_id  as String ++ " Log :: " ++ attributes.uriParams.requestType as String]' category="com.caseys.orderrouter"/>
+				<flow-ref doc:name="eodReportFlow" doc:id="babf0e41-c71d-40c1-97b4-e25521262b5a" name="eodReportFlow"/>
+			</when>
+			<when expression="#[attributes.uriParams.requestType == '${order-eodupdates}']">
+				<logger level="INFO" doc:name="Log Eod Update" doc:id="7b0eccc8-c0e3-4edc-95fc-cd776816a945" message='#[output application/java --- vars.correlation_id  as String ++ " Log :: " ++ attributes.uriParams.requestType as String]' category="com.caseys.orderrouter"/>
+				<flow-ref doc:name="eodUpdateFlow" doc:id="810f3354-ad40-474d-8994-5b0e80910a22" name="eodUpdateFlow"/>
+			</when>
+			<when expression='#[(attributes.uriParams.requestType == "${order-route}") and (attributes.headers.thirdPartyDeliveryPartner == "${dd.drive.delivery}")]'>
+				<logger level="INFO" doc:name="Log Doordash Drive" doc:id="1994c2c9-9864-44ff-a4cf-b76eac0fee90" message="#[vars.correlation_id as String ]  Log ::  #[attributes.headers.thirdPartyDeliveryPartner as String]" category="com.caseys.orderrouter"/>
+				<flow-ref doc:name="ddDriveOrderRouteFlow" doc:id="aa6ec779-eb20-468e-bc1d-c26a10edb039" name="ddDriveOrderRouteFlow"/>
+			</when>
+			<when expression='#[(attributes.uriParams.requestType == "${order-route}") and (attributes.headers.thirdPartyDeliveryPartner == "${ubereats.check}")]' >
+				<logger level="INFO" doc:name="Log Uber Eats" doc:id="8a32509e-763e-48d7-89cb-546235ee1508" message="#[vars.correlation_id as String ]  Log ::  #[attributes.headers.thirdPartyDeliveryPartner as String]" category="com.caseys.orderrouter"/>
+				<ee:transform doc:name="Set Payload" doc:id="87749e22-f0b6-435d-b327-f6b1ae31a4e3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	ip: attributes.headers.'IP'
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<vm:publish queueName="${ubereats.order.queue}" doc:name="Publish to Uber Eats Order Processing Queue" doc:id="a0a479b6-ef32-4e94-9c41-d3446d62b17a" config-ref="OrderProcessingQueue_Config" timeout="${queue.timeout}"/>
+			</when>
+			<when expression="#[(attributes.uriParams.requestType == '${order-punchhresubmit}')]">
+				<logger level="INFO" doc:name="Log Punchh Re-Submit" doc:id="342603cf-7b22-4038-a778-061915831e5d" message="#[vars.correlation_id as String ]  Log ::  Punchh ReSubmit"/>
+				<ee:transform doc:name="Set Payload" doc:id="b232bc52-6e38-4b2f-81aa-a5c1433472de" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderPayload:  payload,
+	cid: attributes.headers.customermasternumber default ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<vm:publish doc:name="Publish to Punchh ReSubmit Processing Queue" doc:id="ac848452-032f-48a9-8c5b-708eff2413b0" config-ref="OrderProcessingQueue_Config" queueName="${punchh.resubmit.order.queue}" timeout="${queue.timeout}"/>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Log Route" message='#[output application/java --- vars.correlation_id  as String ++ " Log :: " ++ attributes.uriParams.requestType as String]' category="com.caseys.orderrouter"></logger>
+				<flow-ref doc:name="routeordersFlow" doc:id="623ee88e-9cd4-4df0-a659-ee577af36e88" name="routeordersFlow" />
+
+</otherwise>
+        </choice>
+		
+	
+</flow>
+	<flow name="put:\orders\(requestType):order-config" doc:id="4d68343b-774e-4b82-9c79-ba5586c7852e" >
+		<ee:transform doc:name="Map to JSON" doc:id="a6e9a005-3cf0-499e-8cc5-222bab16ae39" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Generate and Save correlation_id" doc:id="9bd13f84-f48f-40ab-8daa-6c8e36aeceea" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="correlation_id" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.info.code default ""]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Correlation_id" doc:id="6bdafa2a-80fb-4b36-b50a-da3d202bdd00" message="#[vars.correlation_id]" category="com.caseys.orderrouter"/>
+		<flow-ref doc:name="ordersFlow" doc:id="6dd86cd3-1463-4540-abaa-75a397d8a300" name="ordersFlow" />
+	</flow>
+	
+
+</mule>

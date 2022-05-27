@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+	xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xsi:schemaLocation="
+		http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+		http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+		http://www.mulesoft.org/schema/mule/munit-tools  http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<munit:config name="orders-test-suite.xml" />
+	<munit:test name="orders-test-suite-post:\orders\(requestType):order-configTest" description="Test" doc:id="7e36acbf-a68f-45d0-b309-b54dc74f8425" >
+		<munit:behavior>
+			<munit-tools:mock-when doc:name="Mock auth" doc:id="ef43daf1-e502-4366-a90d-87ac884cff86" processor="http:request">
+				<munit-tools:with-attributes >
+					<munit-tools:with-attribute attributeName="client_id" whereValue="qa" />
+					<munit-tools:with-attribute attributeName="client_secret" whereValue="test" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return >
+					<munit-tools:payload value="#['{&quot;access_token&quot;:&quot;04c3595f-3aca-474f-a336-5aaa76e5b972&quot;,&quot;token_type&quot;:&quot;bearer&quot;,&quot;expires_in&quot;:18786,&quot;scope&quot;:&quot;extended openid&quot;}']" mediaType="application/json" encoding="UTF-8" />
+					<munit-tools:attributes value="#[status:200]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when doc:name="Mock Orders" doc:id="21056a06-bdaa-473b-a69b-40cec63c7b97" processor="choice">
+				<munit-tools:with-attributes >
+					<munit-tools:with-attribute attributeName="headers.'X-Correlation-ID'" whereValue="null" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return >
+					<munit-tools:payload value='#[""]' />
+					<munit-tools:attributes value="#[status:200]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution >
+			<flow-ref doc:name="Flow-ref to post:\orders\(requestType):order-config" doc:id="e9004376-344c-414b-85a4-e2d1fa92ec4e" name="ordersFlow"/>
+		</munit:execution>
+		<munit:validation >
+			<munit-tools:assert-that doc:name="Assert that" doc:id="78b85743-da89-4a55-9ecf-1090ce6683cc" expression="#[payload]" is="#[MunitTools::notNullValue()]" message="Is not Null" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="orders-test-suite-post:\orders\(requestType):order-configTest1" description="Test" doc:id="d9501196-a237-43b4-bc98-255d7b76e98e" >
+		<munit:execution >
+			<ee:transform doc:name="Transform Message" doc:id="41d3572a-d345-4c1d-bf62-e2af7254571f" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<set-variable value="12345" doc:name="Set Variable" doc:id="44baf287-b851-4a04-a201-84cb50a8e396" variableName="correlation_id"/>
+			<flow-ref doc:name="Flow-ref to post:\orders\(requestType):order-config" doc:id="3b93daa7-2b3d-4872-aca9-e25c4c4b67f9" name="post:\orders\(requestType):order-config"/>
+		</munit:execution>
+		<munit:validation >
+			<munit-tools:assert-that doc:name="Assert that" doc:id="23f1baac-1792-4151-a235-b6c105da0883" expression="#[payload]" is="#[MunitTools::notNullValue()]" message="Is not Null" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="orders-test-suite-post:\orders\(requestType):order-configTest2" description="Test" doc:id="05dfac20-e47e-4403-9b12-170ea58697b9">
+			<munit:behavior>
+				<munit-tools:mock-when doc:name="Mock Orders" doc:id="9150c411-533d-4b13-8b03-123b642c8374" processor="choice">
+				
+					<munit-tools:with-attributes >
+					<munit-tools:with-attribute attributeName="requestType" whereValue="cancel" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+						<munit-tools:payload value='#[""]' />
+						<munit-tools:attributes value="#[status:200]" />
+					</munit-tools:then-return>
+				</munit-tools:mock-when>
+			</munit:behavior>
+			<munit:execution>
+				<munit:set-event doc:name="Set Event" doc:id="dc586ffa-c143-469f-924c-db44ce6861e8" >
+				<munit:attributes value="#[{uriParams: 'requestType': 'cancel'}]" />
+
+			</munit:set-event>
+			<flow-ref doc:name="Flow-ref to post:\orders\(requestType):order-config" doc:id="5731127c-b7b2-4c45-8de6-616be94ef021" name="ordersFlow" />
+			</munit:execution>
+			<munit:validation>
+				<munit-tools:assert-that doc:name="Assert that" doc:id="e9fdb409-025b-488a-ab92-ca06a3448553" expression="#[payload]" is="#[MunitTools::notNullValue()]" message="Is not Null" />
+			</munit:validation>
+		</munit:test>
+	<munit:test name="orders-test-suite-post:\orders\(requestType):order-configTest3" description="Test" doc:id="3e718c65-cd61-4fc0-b450-b8cacd16e9b9">
+			<munit:behavior>
+				<munit-tools:mock-when doc:name="Mock Orders" doc:id="39c2d2a1-9e6f-4157-981e-c7a55180b717" processor="choice">
+					<munit-tools:with-attributes>
+						<munit-tools:with-attribute attributeName="requestType" whereValue="cancel" />
+					</munit-tools:with-attributes>
+					<munit-tools:then-return>
+						<munit-tools:payload value='#[""]' />
+						<munit-tools:attributes value="#[status:200]" />
+					</munit-tools:then-return>
+				</munit-tools:mock-when>
+			</munit:behavior>
+			<munit:execution>
+				<munit:set-event doc:name="Set Event" doc:id="65f9a179-4741-47c5-8bcd-9329e74c7a6b">
+				<munit:attributes value="#[{uriParams: 'requestType': 'rePrint'}]" />
+				</munit:set-event>
+				<flow-ref doc:name="Flow-ref to post:\orders\(requestType):order-config" doc:id="99dc5d4d-bfa6-477a-8888-9c6d55ff71cf" name="ordersFlow" />
+			</munit:execution>
+			<munit:validation>
+				<munit-tools:assert-that doc:name="Assert that" doc:id="da761e26-85c2-4302-8617-0cff94acec8c" expression="#[payload]" is="#[MunitTools::notNullValue()]" message="Is not Null" />
+			</munit:validation>
+		</munit:test>
+
+
+
+
+</mule>
